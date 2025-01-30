@@ -1,0 +1,13 @@
+interface FacebookUser {
+    id: string;
+    email: string;
+    name?: string;
+    picture?: {
+        data: {
+            url: string;
+        };
+    };
+}
+export declare function verifyFacebookToken(token: string): Promise<FacebookUser>;
+export {};
+//# sourceMappingURL=facebook-auth.d.ts.map

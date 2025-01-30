@@ -1,0 +1,1 @@
+{"version":3,"file":"elastic-client.d.ts","sourceRoot":"","sources":["../../src/services/elastic-client.ts"],"names":[],"mappings":"AAAA,OAAO,EAAE,MAAM,EAAE,MAAM,wBAAwB,CAAC;AA4GhD,QAAA,MAAM,cAAc;gBAXG,OAAO,CAAC,OAAO,CAAC;CAWsB,CAAC;AAE9D,OAAO,EAAE,cAAc,IAAI,aAAa,EAAE,CAAC"}

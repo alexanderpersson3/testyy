@@ -1,0 +1,122 @@
+apiVersion: compute.v1.securityPolicies
+kind: SecurityPolicy
+metadata:
+  name: rezepta-security-policy
+description: Security policy for Rezepta backend API
+rules:
+  # Allow traffic from specified IP ranges (e.g., frontend applications)
+  - action: allow
+    priority: 1000
+    match:
+      versionedExpr: SRC_IPS_V1
+      config:
+        srcIpRanges:
+          - "YOUR_FRONTEND_IP_RANGE"
+          - "YOUR_ADMIN_IP_RANGE"
+    description: "Allow traffic from trusted sources"
+
+  # Block known malicious IPs
+  - action: deny(403)
+    priority: 2000
+    match:
+      versionedExpr: SRC_IPS_V1
+      config:
+        srcIpRanges:
+          - "MALICIOUS_IP_RANGE_1"
+          - "MALICIOUS_IP_RANGE_2"
+    description: "Block known malicious IPs"
+
+  # Rate limiting rule
+  - action: rate_based_ban
+    priority: 3000
+    match:
+      versionedExpr: SRC_IPS_V1
+      config:
+        srcIpRanges:
+          - "*"
+    description: "Rate limit all traffic"
+    rateLimitOptions:
+      enforceOnKey: "IP"
+      enforceOnKeyName: "src_ip"
+      threshold: 100
+      conformAction: "allow"
+      exceedAction: "deny(429)"
+      banDurationSec: 300
+
+  # XSS protection
+  - action: deny(403)
+    priority: 4000
+    match:
+      expr:
+        expression: "evaluatePreconfiguredExpr('xss-stable')"
+    description: "Block XSS attacks"
+
+  # SQL injection protection
+  - action: deny(403)
+    priority: 5000
+    match:
+      expr:
+        expression: "evaluatePreconfiguredExpr('sqli-stable')"
+    description: "Block SQL injection attacks"
+
+  # Remote file inclusion protection
+  - action: deny(403)
+    priority: 6000
+    match:
+      expr:
+        expression: "evaluatePreconfiguredExpr('rfi-stable')"
+    description: "Block remote file inclusion attacks"
+
+  # Local file inclusion protection
+  - action: deny(403)
+    priority: 7000
+    match:
+      expr:
+        expression: "evaluatePreconfiguredExpr('lfi-stable')"
+    description: "Block local file inclusion attacks"
+
+  # Scanner detection
+  - action: deny(403)
+    priority: 8000
+    match:
+      expr:
+        expression: "evaluatePreconfiguredExpr('scannerdetection-stable')"
+    description: "Block scanner detection"
+
+  # Protocol attack protection
+  - action: deny(403)
+    priority: 9000
+    match:
+      expr:
+        expression: "evaluatePreconfiguredExpr('protocolattack-stable')"
+    description: "Block protocol attacks"
+
+  # Default rule (deny all other traffic)
+  - action: deny(403)
+    priority: 2147483647
+    match:
+      versionedExpr: SRC_IPS_V1
+      config:
+        srcIpRanges:
+          - "*"
+    description: "Default deny rule"
+
+adaptiveProtection:
+  layer7DdosDefenseConfig:
+    enable: true
+    ruleVisibility: STANDARD
+  autoDeployConfig:
+    loadThreshold: 0.8
+    confidenceThreshold: 0.8
+
+headerAction:
+  requestHeadersToAdd:
+    - headerName: "X-Cloud-Armor"
+      headerValue: "protected"
+  responseHeadersToAdd:
+    - headerName: "X-Content-Type-Options"
+      headerValue: "nosniff"
+    - headerName: "X-Frame-Options"
+      headerValue: "DENY"
+    - headerName: "X-XSS-Protection"
+      headerValue: "1; mode=block" 

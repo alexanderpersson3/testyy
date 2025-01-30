@@ -1,0 +1,1 @@
+{"version":3,"file":"apple-auth.d.ts","sourceRoot":"","sources":["../../src/services/apple-auth.ts"],"names":[],"mappings":"AAGA,UAAU,SAAS;IACjB,GAAG,EAAE,MAAM,CAAC;IACZ,KAAK,EAAE,MAAM,CAAC;IACd,cAAc,EAAE,OAAO,CAAC;IACxB,IAAI,CAAC,EAAE,MAAM,CAAC;CACf;AAeD,wBAAsB,gBAAgB,CAAC,KAAK,EAAE,MAAM,GAAG,OAAO,CAAC,SAAS,CAAC,CA4CxE"}

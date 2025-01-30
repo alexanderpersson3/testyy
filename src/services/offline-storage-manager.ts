@@ -1,0 +1,200 @@
+import { ObjectId } from 'mongodb';
+import { getDb } from '../config/db';
+import { SyncService } from './sync-service';
+import { Recipe, RecipeDocument } from '../types/recipe';
+
+interface OfflineStorageItem {
+  id: string;
+  type: 'recipe' | 'shopping_list' | 'collection';
+  data: any;
+  syncStatus: 'pending' | 'synced' | 'error';
+  lastModified: Date;
+  expiresAt: Date;
+}
+
+interface StorageOptions {
+  maxItems?: number;
+  expirationDays?: number;
+}
+
+export class OfflineStorageManager {
+  private static instance: OfflineStorageManager;
+  private readonly syncService: SyncService;
+  private readonly DEFAULT_MAX_ITEMS = 100;
+  private readonly DEFAULT_EXPIRATION_DAYS = 30;
+  private readonly options: StorageOptions;
+
+  private constructor(options: StorageOptions = {}) {
+    this.options = {
+      maxItems: options.maxItems || this.DEFAULT_MAX_ITEMS,
+      expirationDays: options.expirationDays || this.DEFAULT_EXPIRATION_DAYS
+    };
+    this.syncService = new SyncService();
+  }
+
+  public static getInstance(options?: StorageOptions): OfflineStorageManager {
+    if (!OfflineStorageManager.instance) {
+      OfflineStorageManager.instance = new OfflineStorageManager(options);
+    }
+    return OfflineStorageManager.instance;
+  }
+
+  async markForOffline(userId: string, itemId: string, type: OfflineStorageItem['type']): Promise<boolean> {
+    try {
+      const db = await getDb();
+      const now = new Date();
+      const expirationDate = new Date();
+      expirationDate.setDate(expirationDate.getDate() + this.options.expirationDays!);
+
+      // Get the item data
+      const collection = this.getCollectionName(type);
+      const item = await db.collection(collection).findOne({ _id: new ObjectId(itemId) });
+      
+      if (!item) {
+        throw new Error(`${type} not found`);
+      }
+
+      // Check if we've reached the limit
+      const currentCount = await db.collection('offline_items').countDocuments({
+        userId: new ObjectId(userId)
+      });
+
+      if (currentCount >= this.options.maxItems!) {
+        throw new Error('Offline storage limit reached');
+      }
+
+      const offlineItem: OfflineStorageItem = {
+        id: itemId,
+        type,
+        data: item,
+        syncStatus: 'synced',
+        lastModified: now,
+        expiresAt: expirationDate
+      };
+
+      await db.collection('offline_items').insertOne({
+        userId: new ObjectId(userId),
+        ...offlineItem
+      });
+
+      return true;
+    } catch (error) {
+      console.error('Error marking item for offline:', error);
+      throw error;
+    }
+  }
+
+  async getOfflineItems(userId: string, type?: OfflineStorageItem['type']): Promise<OfflineStorageItem[]> {
+    try {
+      const db = await getDb();
+      const query: any = {
+        userId: new ObjectId(userId),
+        expiresAt: { $gt: new Date() }
+      };
+
+      if (type) {
+        query.type = type;
+      }
+
+      const items = await db.collection('offline_items')
+        .find(query)
+        .toArray();
+
+      return items.map(({ _id, userId, ...item }) => item) as OfflineStorageItem[];
+    } catch (error) {
+      console.error('Error getting offline items:', error);
+      throw error;
+    }
+  }
+
+  async removeFromOffline(userId: string, itemId: string): Promise<boolean> {
+    try {
+      const db = await getDb();
+      const result = await db.collection('offline_items').deleteOne({
+        userId: new ObjectId(userId),
+        id: itemId
+      });
+
+      return result.deletedCount > 0;
+    } catch (error) {
+      console.error('Error removing item from offline storage:', error);
+      throw error;
+    }
+  }
+
+  async syncOfflineChanges(userId: string, deviceId: string): Promise<{
+    success: boolean;
+    conflicts?: Array<{
+      itemId: string;
+      type: string;
+      message: string;
+    }>;
+  }> {
+    try {
+      const db = await getDb();
+      const pendingItems = await db.collection('offline_items').find({
+        userId: new ObjectId(userId),
+        syncStatus: 'pending'
+      }).toArray();
+
+      if (pendingItems.length === 0) {
+        return { success: true };
+      }
+
+      const now = new Date();
+      const syncItems = pendingItems.map(({ id, type, data }) => ({
+        id,
+        type,
+        data,
+        lastModified: now
+      }));
+
+      const batch = await this.syncService.queueSync(new ObjectId(userId), deviceId, syncItems);
+      const result = await this.syncService.processBatch(batch._id!);
+
+      if (result.success) {
+        // Update sync status for successfully synced items
+        await db.collection('offline_items').updateMany(
+          {
+            userId: new ObjectId(userId),
+            id: { $in: syncItems.map(item => item.id) }
+          },
+          {
+            $set: {
+              syncStatus: 'synced',
+              lastModified: now
+            }
+          }
+        );
+      }
+
+      return result;
+    } catch (error) {
+      console.error('Error syncing offline changes:', error);
+      throw error;
+    }
+  }
+
+  async cleanupExpiredItems(): Promise<number> {
+    try {
+      const db = await getDb();
+      const result = await db.collection('offline_items').deleteMany({
+        expiresAt: { $lt: new Date() }
+      });
+
+      return result.deletedCount;
+    } catch (error) {
+      console.error('Error cleaning up expired items:', error);
+      throw error;
+    }
+  }
+
+  private getCollectionName(type: OfflineStorageItem['type']): string {
+    switch (type) {
+      case 'recipe': return 'recipes';
+      case 'shopping_list': return 'shopping_lists';
+      case 'collection': return 'collections';
+      default: throw new Error(`Invalid item type: ${type}`);
+    }
+  }
+} 
