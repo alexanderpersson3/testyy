@@ -1,9 +1,17 @@
 {
+  "dependencies": {
+    "bcrypt": "^5.1.1",
+    "winston": "^3.11.0",
+    "ws": "^8.16.0"
+  },
   "devDependencies": {
+    "@types/bcrypt": "^5.0.2",
     "@types/express": "^5.0.0",
     "@types/joi": "^17.2.3",
     "@types/jsonwebtoken": "^9.0.8",
     "@types/mongodb": "^4.0.7",
-    "@types/node": "^22.13.4"
+    "@types/node": "^22.13.4",
+    "@types/winston": "^2.4.4",
+    "@types/ws": "^8.5.10"
   }
 }
