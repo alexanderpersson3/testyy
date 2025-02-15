@@ -1,0 +1,687 @@
+import { MongoClient, ChangeStream } from 'mongodb';
+import logger from '../utils/logger.js';
+import { EventEmitter } from 'events';
+import { VoiceService } from '../voice.service.js';
+import { WebSocketService } from '../websocket.service.js';
+import { Timer, TimerGroup, TimerEvent, TimerAlert, TimerEventType, CreateTimerDTO, CreateTimerGroupDTO, TimerStats, TimerUnit, } from '../types/timer.js';
+import { db } from '../db/database.service.js';
+import { DatabaseService } from '../db/database.service.js';
+export class EnhancedTimerService {
+    constructor() {
+        this.initialized = false;
+        this.db = DatabaseService.getInstance();
+        this.timerEmitter = new EventEmitter();
+        this.activeTimers = new Map();
+        this.voiceService = VoiceService.getInstance();
+        this.wsService = WebSocketService.getInstance();
+        // Set up error handling for the event emitter
+        this.timerEmitter.on('error', error => {
+            logger.error('Timer event emitter error:', error);
+        });
+        // Clean up intervals on process exit
+        process.on('exit', () => {
+            this.activeTimers.forEach(timeout => {
+                clearTimeout(timeout);
+            });
+        });
+        // Initialize database connection
+        this.initialize().catch(error => {
+            logger.error('Failed to initialize EnhancedTimerService:', error);
+        });
+        // Set up WebSocket event handlers
+        this.setupWebSocketHandlers();
+    }
+    async initialize() {
+        if (this.initialized)
+            return;
+        try {
+            await this.db.connect();
+            this.timersCollection = this.db.getCollection('timers');
+            this.timerGroupsCollection = this.db.getCollection('timer_groups');
+            this.initialized = true;
+            logger.info('EnhancedTimerService initialized successfully');
+        }
+        catch (error) {
+            logger.error('Failed to initialize EnhancedTimerService:', error);
+            throw error;
+        }
+    }
+    async ensureInitialized() {
+        if (!this.initialized) {
+            await this.initialize();
+        }
+    }
+    static getInstance() {
+        if (!EnhancedTimerService.instance) {
+            EnhancedTimerService.instance = new EnhancedTimerService();
+        }
+        return EnhancedTimerService.instance;
+    }
+    /**
+     * Set up WebSocket event handlers for timer synchronization
+     */
+    setupWebSocketHandlers() {
+        this.timerEmitter.on('timer:alert', (event) => {
+            if (event.type === 'timer:alert') {
+                this.wsService.emitToUser(event.userId, 'timer:alert', {
+                    type: event.type,
+                    timestamp: Date.now(),
+                    data: event.data,
+                });
+            }
+        });
+        this.timerEmitter.on('timer:update', (event) => {
+            if (event.type === 'timer:update') {
+                this.wsService.emitToUser(event.userId, 'timer:update', {
+                    type: event.type,
+                    timestamp: Date.now(),
+                    data: event.data,
+                });
+            }
+        });
+        this.timerEmitter.on('timer:complete', (event) => {
+            if (event.type === 'timer:complete') {
+                this.wsService.emitToUser(event.userId, 'timer:complete', {
+                    type: event.type,
+                    timestamp: Date.now(),
+                    data: event.data,
+                });
+            }
+        });
+        this.timerEmitter.on('group:update', (event) => {
+            if (event.type === 'group:update') {
+                this.wsService.emitToUser(event.userId, 'group:update', {
+                    type: event.type,
+                    timestamp: Date.now(),
+                    data: event.data,
+                });
+            }
+        });
+    }
+    /**
+     * Emit a timer event
+     */
+    emitTimerEvent(type, userId, data) {
+        const event = {
+            type,
+            userId,
+            timestamp: new Date(),
+            data,
+        };
+        try {
+            this.timerEmitter.emit(type, event);
+        }
+        catch (error) {
+            logger.error('Error emitting timer event:', {
+                type,
+                userId: userId.toString(),
+                error,
+            });
+        }
+    }
+    /**
+     * Create a timer
+     */
+    async createTimer(userId, data) {
+        await this.ensureInitialized();
+        const now = new Date();
+        const timer = {
+            _id: new ObjectId(),
+            userId,
+            label: data.label,
+            duration: data.duration,
+            unit: 'seconds',
+            status: 'pending',
+            alerts: data.alerts?.map(alert => ({ ...alert, sent: false })) || [
+                {
+                    type: 'notification',
+                    time: 0,
+                    message: 'Timer completed!',
+                    sent: false,
+                },
+            ],
+            priority: data.priority || 'medium',
+            notes: data.notes,
+            recipeId: data.recipeId,
+            stepNumber: data.stepNumber,
+            createdAt: now,
+            updatedAt: now,
+        };
+        const result = await this.timersCollection.insertOne(timer);
+        return { ...timer, _id: result.insertedId };
+    }
+    /**
+     * Create a timer group
+     */
+    async createTimerGroup(userId, data) {
+        await this.ensureInitialized();
+        // Create all timers
+        const timers = await Promise.all(data.timerConfigs.map(config => this.createTimer(userId, {
+            recipeId: data.recipeId,
+            ...config,
+        })));
+        const now = new Date();
+        const group = {
+            _id: new ObjectId(),
+            userId,
+            recipeId: data.recipeId,
+            name: data.name,
+            timers: timers.map(t => t._id),
+            sequence: data.sequence,
+            status: 'pending',
+            progress: {
+                completed: 0,
+                total: timers.length,
+            },
+            createdAt: now,
+            updatedAt: now,
+        };
+        const result = await this.timerGroupsCollection.insertOne(group);
+        return { ...group, _id: result.insertedId };
+    }
+    /**
+     * Get MongoDB client for watch operations
+     */
+    async getMongoClient() {
+        const dbService = DatabaseService.getInstance();
+        await dbService.connect();
+        const client = dbService.client;
+        if (!client) {
+            throw new Error('MongoDB client not available');
+        }
+        return client;
+    }
+    /**
+     * Watch for timer changes
+     */
+    async watchTimers(userId, callback) {
+        const client = await this.getMongoClient();
+        const collection = client.db().collection('timers');
+        const pipeline = [{ $match: { 'fullDocument.userId': userId } }];
+        const changeStream = collection.watch(pipeline);
+        changeStream.on('change', callback);
+    }
+    /**
+     * Start timer
+     */
+    async startTimer(timerId) {
+        await this.ensureInitialized();
+        const now = new Date();
+        const timer = await this.timersCollection.findOne({ _id: timerId });
+        if (!timer) {
+            throw new Error('Timer not found');
+        }
+        if (timer.status !== 'pending' && timer.status !== 'paused') {
+            throw new Error('Timer cannot be started');
+        }
+        const duration = timer.status === 'paused' ? timer.remainingTime : timer.duration;
+        const endTime = new Date(now.getTime() + duration * 1000);
+        const updates = {
+            startTime: now,
+            endTime,
+            status: 'running',
+        };
+        const result = await this.timersCollection
+            .findOneAndUpdate({ _id: timerId }, { $set: updates }, { returnDocument: 'after' });
+        if (!result.value) {
+            throw new Error('Failed to start timer');
+        }
+        // Schedule alerts for the updated timer
+        const updatedTimer = {
+            ...timer,
+            ...updates,
+        };
+        this.scheduleAlerts(updatedTimer);
+        // Emit update event
+        this.emitTimerEvent('timer:update', timer.userId, updatedTimer);
+        return updatedTimer;
+    }
+    /**
+     * Clear alerts for a timer
+     */
+    clearAlerts(timerId) {
+        this.activeTimers.forEach((timeout, key) => {
+            if (key.startsWith(timerId)) {
+                clearTimeout(timeout);
+                this.activeTimers.delete(key);
+            }
+        });
+    }
+    /**
+     * Create timers from recipe instructions
+     */
+    async createTimersFromRecipe(userId, recipeId) {
+        await this.ensureInitialized();
+        // Get recipe
+        const recipe = await this.db.getCollection('recipes').findOne({ _id: recipeId });
+        if (!recipe) {
+            throw new Error('Recipe not found');
+        }
+        // Create timers for instructions with timers
+        const timerConfigs = recipe.instructions
+            .filter(instruction => instruction.timer)
+            .map(instruction => {
+            const duration = this.convertToSeconds(instruction.timer.duration, instruction.timer.unit);
+            return {
+                label: `Step ${instruction.step}: ${instruction.text}`,
+                duration,
+                alerts: instruction.timer.alerts?.map(alert => ({
+                    ...alert,
+                    sent: false,
+                })) || [
+                    {
+                        type: 'notification',
+                        time: 0,
+                        message: `Timer for step ${instruction.step} completed!`,
+                        sent: false,
+                    },
+                ],
+                priority: 'medium',
+            };
+        });
+        if (timerConfigs.length === 0) {
+            throw new Error('No timers found in recipe instructions');
+        }
+        // Create timer group
+        return this.createTimerGroup(userId, {
+            recipeId,
+            name: `Timers for ${recipe.title}`,
+            timerConfigs,
+            sequence: 'sequential',
+        });
+    }
+    /**
+     * Convert time to seconds
+     */
+    convertToSeconds(duration, unit) {
+        switch (unit) {
+            case 'seconds':
+                return duration;
+            case 'minutes':
+                return duration * 60;
+            case 'hours':
+                return duration * 3600;
+        }
+    }
+    /**
+     * Handle timer completion
+     */
+    async handleTimerCompletion(timer) {
+        await this.ensureInitialized();
+        try {
+            // Update timer status
+            await this.timersCollection.updateOne({ _id: timer._id }, {
+                $set: {
+                    status: 'completed',
+                    endTime: new Date(),
+                },
+            });
+            const updatedTimer = await this.timersCollection.findOne({ _id: timer._id });
+            if (!updatedTimer) {
+                throw new Error('Failed to update timer');
+            }
+            // Emit completion event
+            this.emitTimerEvent('timer:complete', timer.userId, updatedTimer);
+            // If timer is part of a group, handle group progression
+            if (timer.groupId) {
+                const group = await this.timerGroupsCollection.findOne({ _id: timer.groupId });
+                if (group && group.sequence === 'sequential') {
+                    const currentIndex = group.timers.findIndex(t => t.equals(timer._id));
+                    const nextTimer = group.timers[currentIndex + 1];
+                    if (nextTimer) {
+                        // Start next timer
+                        await this.startTimer(nextTimer);
+                    }
+                    else {
+                        // All timers completed
+                        await this.timerGroupsCollection.updateOne({ _id: group._id }, {
+                            $set: {
+                                status: 'completed',
+                                progress: {
+                                    completed: group.timers.length,
+                                    total: group.timers.length,
+                                },
+                                updatedAt: new Date(),
+                            },
+                        });
+                        const updatedGroup = await this.timerGroupsCollection.findOne({ _id: group._id });
+                        if (updatedGroup) {
+                            this.emitTimerEvent('group:update', updatedGroup.userId, updatedGroup);
+                        }
+                    }
+                }
+            }
+        }
+        catch (error) {
+            logger.error('Error handling timer completion:', error);
+            throw error;
+        }
+    }
+    /**
+     * Schedule alerts for a timer
+     */
+    async scheduleAlerts(timer) {
+        const timerId = timer._id.toString();
+        // Clear any existing alerts
+        this.clearAlerts(timerId);
+        // Schedule new alerts
+        timer.alerts
+            .filter(alert => !alert.sent)
+            .forEach(alert => {
+            const alertTime = timer.endTime.getTime() - alert.time * 1000;
+            const delay = alertTime - Date.now();
+            if (delay > 0) {
+                const timeout = setTimeout(async () => {
+                    try {
+                        // Check if alert should still be sent
+                        const currentTimer = await this.timersCollection.findOne({ _id: timer._id });
+                        if (currentTimer &&
+                            currentTimer.status === 'running' &&
+                            !currentTimer.alerts.find(a => a.time === alert.time && a.type === alert.type && a.sent)) {
+                            // Mark alert as sent
+                            await this.timersCollection.updateOne({
+                                _id: timer._id,
+                                'alerts.time': alert.time,
+                                'alerts.type': alert.type,
+                            }, {
+                                $set: {
+                                    'alerts.$.sent': true,
+                                    updatedAt: new Date(),
+                                },
+                            });
+                            const updatedTimer = await this.timersCollection.findOne({ _id: timer._id });
+                            if (updatedTimer) {
+                                // Emit alert event
+                                this.emitTimerEvent('timer:alert', updatedTimer.userId, {
+                                    timerId: updatedTimer._id,
+                                    type: alert.type,
+                                    message: alert.message,
+                                });
+                                // Handle voice alerts
+                                if (alert.type === 'voice') {
+                                    try {
+                                        await this.voiceService.speak(alert.message);
+                                    }
+                                    catch (error) {
+                                        logger.error('Error playing voice alert:', error);
+                                    }
+                                }
+                                // Emit timer update
+                                this.emitTimerEvent('timer:update', updatedTimer.userId, updatedTimer);
+                            }
+                        }
+                    }
+                    catch (error) {
+                        logger.error('Error processing timer alert:', {
+                            timerId,
+                            alertTime: alert.time,
+                            error,
+                        });
+                    }
+                }, delay);
+                this.activeTimers.set(`${timerId}-${alert.time}`, timeout);
+            }
+        });
+    }
+    /**
+     * Get active timers
+     */
+    async getActiveTimers(userId) {
+        await this.ensureInitialized();
+        return this.timersCollection
+            .find({
+            userId,
+            status: { $in: ['running', 'paused'] },
+        })
+            .sort({ priority: -1, startTime: 1 })
+            .toArray();
+    }
+    /**
+     * Get timer groups
+     */
+    async getTimerGroups(userId, recipeId) {
+        await this.ensureInitialized();
+        const query = { userId };
+        if (recipeId) {
+            query.recipeId = recipeId;
+        }
+        const groups = await this.timerGroupsCollection
+            .find(query)
+            .sort({ updatedAt: -1 })
+            .toArray();
+        // Get timer details
+        const timerIds = groups.flatMap(g => g.timers);
+        const timers = await this.timersCollection
+            .find({ _id: { $in: timerIds } })
+            .toArray();
+        const timerMap = new Map(timers.map(t => [t._id.toString(), t]));
+        return groups.map(({ timers: groupTimers, ...group }) => {
+            const mappedTimers = groupTimers
+                .map(id => timerMap.get(id.toString()))
+                .filter((t) => t !== undefined);
+            return {
+                ...group,
+                timers: mappedTimers,
+            };
+        });
+    }
+    /**
+     * Start timer group
+     */
+    async startTimerGroup(groupId) {
+        await this.ensureInitialized();
+        const group = await this.timerGroupsCollection.findOne({ _id: groupId });
+        if (!group) {
+            throw new Error('Timer group not found');
+        }
+        if (group.sequence === 'parallel') {
+            // Start all timers
+            await Promise.all(group.timers.map(timerId => this.startTimer(timerId)));
+        }
+        else {
+            // Start first timer
+            await this.startTimer(group.timers[0]);
+        }
+        const updates = {
+            status: 'running',
+            activeTimer: group.sequence === 'sequential' ? group.timers[0] : undefined,
+            updatedAt: new Date(),
+        };
+        const result = await this.timerGroupsCollection
+            .findOneAndUpdate({ _id: groupId }, { $set: updates }, { returnDocument: 'after' });
+        if (!result.value) {
+            throw new Error('Failed to start timer group');
+        }
+        return {
+            ...group,
+            ...updates,
+        };
+    }
+    /**
+     * Pause timer
+     */
+    async pauseTimer(timerId) {
+        await this.ensureInitialized();
+        const now = new Date();
+        const timer = await this.timersCollection.findOne({ _id: timerId });
+        if (!timer || timer.status !== 'running') {
+            throw new Error('Timer cannot be paused');
+        }
+        // Calculate remaining time
+        const remainingTime = Math.max(0, Math.floor((timer.endTime.getTime() - now.getTime()) / 1000));
+        // Clear scheduled alerts
+        this.clearAlerts(timerId.toString());
+        const updates = {
+            status: 'paused',
+            remainingTime,
+        };
+        const result = await this.timersCollection
+            .findOneAndUpdate({ _id: timerId }, { $set: updates }, { returnDocument: 'after' });
+        if (!result.value) {
+            throw new Error('Failed to pause timer');
+        }
+        const updatedTimer = {
+            ...timer,
+            ...updates,
+        };
+        // Emit update event
+        this.emitTimerEvent('timer:update', updatedTimer.userId, updatedTimer);
+        return updatedTimer;
+    }
+    /**
+     * Stop timer
+     */
+    async stopTimer(timerId) {
+        await this.ensureInitialized();
+        const timer = await this.timersCollection.findOne({ _id: timerId });
+        if (!timer) {
+            throw new Error('Timer not found');
+        }
+        // Clear scheduled alerts
+        this.clearAlerts(timerId.toString());
+        const updates = {
+            status: 'cancelled',
+            endTime: new Date(),
+        };
+        const result = await this.timersCollection
+            .findOneAndUpdate({ _id: timerId }, { $set: updates }, { returnDocument: 'after' });
+        if (!result.value) {
+            throw new Error('Failed to stop timer');
+        }
+        const updatedTimer = {
+            ...timer,
+            ...updates,
+        };
+        // Emit update event
+        this.emitTimerEvent('timer:update', updatedTimer.userId, updatedTimer);
+        return updatedTimer;
+    }
+    /**
+     * Bulk start multiple timers
+     */
+    async startTimers(timerIds) {
+        return Promise.all(timerIds.map(id => this.startTimer(id)));
+    }
+    /**
+     * Bulk pause multiple timers
+     */
+    async pauseTimers(timerIds) {
+        return Promise.all(timerIds.map(id => this.pauseTimer(id)));
+    }
+    /**
+     * Bulk stop multiple timers
+     */
+    async stopTimers(timerIds) {
+        return Promise.all(timerIds.map(id => this.stopTimer(id)));
+    }
+    /**
+     * Synchronize a timer with the server time
+     */
+    async syncTimer(timerId) {
+        await this.ensureInitialized();
+        const now = new Date();
+        const timer = await this.timersCollection.findOne({ _id: timerId });
+        if (!timer) {
+            throw new Error('Timer not found');
+        }
+        if (timer.status !== 'running') {
+            return timer;
+        }
+        // Calculate new remaining time
+        const remainingTime = Math.max(0, Math.floor((timer.endTime.getTime() - now.getTime()) / 1000));
+        if (remainingTime === 0) {
+            // Timer has completed
+            await this.handleTimerCompletion(timer);
+            const updatedTimer = await this.timersCollection.findOne({ _id: timerId });
+            if (!updatedTimer) {
+                throw new Error('Timer not found after completion');
+            }
+            return updatedTimer;
+        }
+        // Reschedule alerts if needed
+        this.clearAlerts(timerId.toString());
+        this.scheduleAlerts(timer);
+        return timer;
+    }
+    /**
+     * Get timer statistics for a user
+     */
+    async getTimerStats(userId) {
+        await this.ensureInitialized();
+        const timers = await this.timersCollection.find({ userId }).toArray();
+        const completed = timers.filter(t => t.status === 'completed').length;
+        const cancelled = timers.filter(t => t.status === 'cancelled').length;
+        const completedTimers = timers.filter(t => t.status === 'completed');
+        const totalTime = completedTimers.reduce((sum, timer) => {
+            const duration = timer.endTime.getTime() - timer.startTime.getTime();
+            return sum + Math.floor(duration / 1000);
+        }, 0);
+        return {
+            total: timers.length,
+            completed,
+            cancelled,
+            averageDuration: completed > 0 ? Math.floor(totalTime / completed) : 0,
+            totalTime,
+        };
+    }
+    /**
+     * Reset a timer to its initial state
+     */
+    async resetTimer(timerId) {
+        await this.ensureInitialized();
+        const timer = await this.timersCollection.findOne({ _id: timerId });
+        if (!timer) {
+            throw new Error('Timer not found');
+        }
+        // Clear any scheduled alerts
+        this.clearAlerts(timerId.toString());
+        const updates = {
+            status: 'pending',
+        };
+        await this.timersCollection.updateOne({ _id: timerId }, {
+            $set: updates,
+            $unset: {
+                startTime: '',
+                endTime: '',
+                remainingTime: '',
+            },
+        });
+        const updatedTimer = await this.timersCollection.findOne({ _id: timerId });
+        if (!updatedTimer) {
+            throw new Error('Timer not found after reset');
+        }
+        return updatedTimer;
+    }
+    /**
+     * Add alerts to an existing timer
+     */
+    async addAlerts(timerId, alerts) {
+        await this.ensureInitialized();
+        const timer = await this.timersCollection.findOne({ _id: timerId });
+        if (!timer) {
+            throw new Error('Timer not found');
+        }
+        const newAlerts = alerts.map(alert => ({
+            ...alert,
+            sent: false,
+        }));
+        await this.timersCollection.updateOne({ _id: timerId }, {
+            $push: {
+                alerts: {
+                    $each: newAlerts,
+                },
+            },
+        });
+        const updatedTimer = await this.timersCollection.findOne({ _id: timerId });
+        if (!updatedTimer) {
+            throw new Error('Timer not found after adding alerts');
+        }
+        if (updatedTimer.status === 'running') {
+            // Reschedule alerts if timer is running
+            this.clearAlerts(timerId.toString());
+            this.scheduleAlerts(updatedTimer);
+        }
+        return updatedTimer;
+    }
+}
+//# sourceMappingURL=enhanced-timer.service.js.map
