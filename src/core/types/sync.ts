@@ -1,5 +1,5 @@
 import type { Recipe } from '../types/express.js';
-import { ObjectId } from 'mongodb';;;;
+import { ObjectId } from 'mongodb';
 import type { RecipeDocument } from '../types/express.js';
 export type SyncOperationType = 'create' | 'update' | 'delete';
 export type ConflictResolution = 'client_wins' | 'server_wins' | 'manual_merge';
@@ -97,13 +97,44 @@ export interface SyncStats {
   total: number;
 }
 
+/**
+ * Base interface for synchronization results
+ */
 export interface SyncResult {
   success: boolean;
-  syncedItems: number;
-  conflicts: number;
-  errors: Array<{
+  timestamp: Date;
+  duration: number;
+  errors: {
     itemId: ObjectId;
     error: string;
-  }>;
-  newVersion: number;
+  }[];
+}
+
+/**
+ * Interface for ingredient synchronization results
+ */
+export interface IngredientSyncResult extends SyncResult {
+  totalIngredients: number;
+  updatedIngredients: number;
+  newIngredients: number;
+}
+
+/**
+ * Interface for price synchronization results
+ */
+export interface PriceSyncResult extends SyncResult {
+  totalRecipes: number;
+  updatedPrices: number;
+  priceAlerts: number;
+}
+
+/**
+ * Interface for price alert results
+ */
+export interface PriceAlertResult {
+  priceAlerts: number;
+  errors: {
+    itemId: ObjectId;
+    error: string;
+  }[];
 }

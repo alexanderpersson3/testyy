@@ -10,6 +10,9 @@ import type {
   IngredientWithPrices, 
   CustomIngredient 
 } from '../types/ingredient.js';
+import { BaseRepository } from '../../../core/database/base.repository';
+import { ServiceFactory } from '../../../core/di/service.factory';
+import { IngredientSyncResult } from '../../../core/types/sync';
 
 type IngredientDocument = WithId<Ingredient>;
 
@@ -17,9 +20,12 @@ export class IngredientService {
   private static instance: IngredientService;
   private db: DatabaseService;
   private readonly COLLECTION = 'ingredients';
+  private repository: BaseRepository<Ingredient>;
+  private logger = ServiceFactory.getLogger();
 
   private constructor() {
     this.db = DatabaseService.getInstance();
+    this.repository = new BaseRepository<Ingredient>('ingredients');
   }
 
   public static getInstance(): IngredientService {
@@ -315,5 +321,72 @@ export class IngredientService {
     });
 
     return result.deletedCount > 0;
+  }
+
+  /**
+   * Synchronize scraped ingredients with the database
+   */
+  public async syncScrapedIngredients(): Promise<IngredientSyncResult> {
+    const startTime = Date.now();
+    const result: IngredientSyncResult = {
+      success: true,
+      timestamp: new Date(),
+      duration: 0,
+      totalIngredients: 0,
+      updatedIngredients: 0,
+      newIngredients: 0,
+      errors: []
+    };
+
+    try {
+      // Get scraped ingredients (implementation depends on your scraping setup)
+      const scrapedIngredients = await this.getScrapedIngredients();
+      result.totalIngredients = scrapedIngredients.length;
+
+      for (const ingredient of scrapedIngredients) {
+        try {
+          const existing = await this.repository.findOne({ name: ingredient.name });
+
+          if (existing) {
+            // Update existing ingredient
+            await this.repository.updateById(existing._id, {
+              $set: {
+                ...ingredient,
+                updatedAt: new Date()
+              }
+            });
+            result.updatedIngredients++;
+          } else {
+            // Create new ingredient
+            await this.repository.create({
+              ...ingredient,
+              _id: new ObjectId(),
+              updatedAt: new Date()
+            });
+            result.newIngredients++;
+          }
+        } catch (error) {
+          result.errors.push({
+            itemId: ingredient._id,
+            error: error instanceof Error ? error.message : 'Unknown error'
+          });
+        }
+      }
+    } catch (error) {
+      result.success = false;
+      this.logger.error('Failed to sync ingredients', { error });
+    }
+
+    result.duration = Date.now() - startTime;
+    return result;
+  }
+
+  /**
+   * Get scraped ingredients from external source
+   * This is a placeholder - implement according to your scraping setup
+   */
+  private async getScrapedIngredients(): Promise<Partial<Ingredient>[]> {
+    // TODO: Implement ingredient scraping logic
+    return [];
   }
 }
