@@ -1,100 +1,91 @@
 /**
  * Base class for MongoDB errors
  */
-export class MongoError extends Error {
+export class MongoBaseError extends Error {
   constructor(message: string, public cause?: unknown) {
     super(message);
-    this.name = 'MongoError';
+    this.name = this.constructor.name;
   }
 }
 
 /**
  * Error thrown when a MongoDB query fails
  */
-export class MongoQueryError extends MongoError {
+export class MongoQueryError extends MongoBaseError {
   constructor(message: string, cause?: unknown) {
     super(message, cause);
-    this.name = 'MongoQueryError';
   }
 }
 
 /**
  * Error thrown when a MongoDB write operation fails
  */
-export class MongoWriteError extends MongoError {
+export class MongoWriteError extends MongoBaseError {
   constructor(message: string, cause?: unknown) {
     super(message, cause);
-    this.name = 'MongoWriteError';
   }
 }
 
 /**
  * Error thrown when MongoDB validation fails
  */
-export class MongoValidationError extends MongoError {
-  constructor(message: string, public validationErrors: Record<string, string>, cause?: unknown) {
+export class MongoValidationError extends MongoBaseError {
+  constructor(message: string, cause?: unknown) {
     super(message, cause);
-    this.name = 'MongoValidationError';
   }
 }
 
 /**
  * Error thrown when MongoDB connection fails
  */
-export class MongoConnectionError extends MongoError {
+export class MongoConnectionError extends MongoBaseError {
   constructor(message: string, cause?: unknown) {
     super(message, cause);
-    this.name = 'MongoConnectionError';
   }
 }
 
 /**
  * Error thrown when MongoDB transaction fails
  */
-export class MongoTransactionError extends MongoError {
+export class MongoTransactionError extends MongoBaseError {
   constructor(message: string, cause?: unknown) {
     super(message, cause);
-    this.name = 'MongoTransactionError';
   }
 }
 
 /**
  * Error thrown when MongoDB duplicate key violation occurs
  */
-export class MongoDuplicateKeyError extends MongoError {
+export class MongoDuplicateKeyError extends MongoBaseError {
   constructor(message: string, public key: string, cause?: unknown) {
     super(message, cause);
-    this.name = 'MongoDuplicateKeyError';
   }
 }
 
 /**
  * Error thrown when MongoDB bulk write operation fails
  */
-export class MongoBulkWriteError extends MongoError {
+export class MongoBulkWriteError extends MongoBaseError {
   constructor(message: string, public writeErrors: unknown[], cause?: unknown) {
     super(message, cause);
-    this.name = 'MongoBulkWriteError';
   }
 }
 
 /**
  * Error thrown when MongoDB timeout occurs
  */
-export class MongoTimeoutError extends MongoError {
+export class MongoTimeoutError extends MongoBaseError {
   constructor(message: string, public timeoutMs: number, cause?: unknown) {
     super(message, cause);
-    this.name = 'MongoTimeoutError';
   }
 }
 
 /**
  * Error thrown when MongoDB authentication fails
  */
-export class MongoAuthError extends MongoError {
+export class MongoAuthError extends MongoBaseError {
   constructor(message: string, cause?: unknown) {
     super(message, cause);
-    this.name = 'MongoAuthError';
   }
 }
 
@@ -103,7 +94,18 @@ export class MongoAuthError extends MongoError {
  */
 export class MongoSchemaValidationError extends MongoValidationError {
   constructor(message: string, validationErrors: Record<string, string>, public schemaName: string, cause?: unknown) {
-    super(message, validationErrors, cause);
-    this.name = 'MongoSchemaValidationError';
+    super(message, cause);
+  }
+}
+
+export class MongoNotFoundError extends MongoBaseError {
+  constructor(message: string, cause?: unknown) {
+    super(message, cause);
+  }
+}
+
+export class MongoDuplicateError extends MongoBaseError {
+  constructor(message: string, cause?: unknown) {
+    super(message, cause);
   }
 } 

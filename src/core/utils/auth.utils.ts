@@ -1,9 +1,15 @@
 import bcrypt from 'bcrypt';
-import jwt, { SignOptions } from 'jsonwebtoken';
+import jwt from 'jsonwebtoken';
 import { User } from '../../modules/users/types/user.types';
-import { config } from '../config';
+import { config } from '../../config';
+import { ObjectId } from 'mongodb';
 
 const SALT_ROUNDS = 10;
+
+export interface TokenPayload {
+  _id: ObjectId;
+  role: string;
+}
 
 export async function hashPassword(password: string): Promise<string> {
   return bcrypt.hash(password, SALT_ROUNDS);
@@ -13,48 +19,47 @@ export async function comparePassword(password: string, hash: string): Promise<b
   return bcrypt.compare(password, hash);
 }
 
-interface TokenPayload {
-  userId: string;
-  email: string;
-  role: string;
-}
-
-export function generateToken(user: Pick<User, '_id' | 'email' | 'role'>, expiresIn: jwt.SignOptions['expiresIn'] = '1h'): string {
-  const payload: TokenPayload = {
-    userId: user._id.toString(),
-    email: user.email,
-    role: user.role
+export function generateToken(payload: TokenPayload): string {
+  const tokenPayload = {
+    _id: payload._id.toString(),
+    role: payload.role
   };
   
-  const options: SignOptions = { expiresIn };
-  return jwt.sign(payload, config.jwt.secret, options);
+  return jwt.sign(tokenPayload, config.jwt.secret);
 }
 
 export function verifyToken(token: string): TokenPayload {
   try {
-    return jwt.verify(token, config.jwt.secret) as TokenPayload;
+    const decoded = jwt.verify(token, config.jwt.secret) as { _id: string; role: string };
+    return {
+      _id: new ObjectId(decoded._id),
+      role: decoded.role
+    };
   } catch (error) {
     throw new Error('Invalid token');
   }
 }
 
-export function generateRefreshToken(user: Pick<User, '_id'>, expiresIn: jwt.SignOptions['expiresIn'] = '7d'): string {
-  const payload = {
-    userId: user._id.toString(),
+export function generateRefreshToken(payload: TokenPayload): string {
+  const tokenPayload = {
+    _id: payload._id.toString(),
+    role: payload.role,
     type: 'refresh'
   };
   
-  const options: SignOptions = { expiresIn };
-  return jwt.sign(payload, config.jwt.refreshSecret, options);
+  return jwt.sign(tokenPayload, config.jwt.refreshSecret);
 }
 
-export function verifyRefreshToken(token: string): { userId: string } {
+export function verifyRefreshToken(token: string): TokenPayload {
   try {
-    const payload = jwt.verify(token, config.jwt.refreshSecret) as { userId: string; type: string };
-    if (payload.type !== 'refresh') {
+    const decoded = jwt.verify(token, config.jwt.refreshSecret) as { _id: string; role: string; type: string };
+    if (decoded.type !== 'refresh') {
       throw new Error('Invalid refresh token');
     }
-    return { userId: payload.userId };
+    return {
+      _id: new ObjectId(decoded._id),
+      role: decoded.role
+    };
   } catch (error) {
     throw new Error('Invalid refresh token');
   }

@@ -161,3 +161,52 @@ export * from './validate.middleware.js';
 export { authenticate } from './auth.middleware.js';
 export { errorHandler } from './error.middleware.js';
 export { validateRequest } from './validate.middleware.js';
+
+// Core Middleware
+export * from './auth.middleware';
+export * from './error.middleware';
+export * from './validation.middleware';
+export * from './logging.middleware';
+export * from './cache.middleware';
+export * from './rate-limit.middleware';
+
+// Middleware Types
+export interface MiddlewareConfig {
+  enabled: boolean;
+  options?: Record<string, unknown>;
+}
+
+// Middleware Registry
+export const middlewareRegistry = {
+  auth: {
+    enabled: true,
+    options: {
+      excludePaths: ['/api/health', '/api/docs']
+    }
+  },
+  rateLimit: {
+    enabled: true,
+    options: {
+      windowMs: 15 * 60 * 1000, // 15 minutes
+      max: 100 // limit each IP to 100 requests per windowMs
+    }
+  },
+  cache: {
+    enabled: true,
+    options: {
+      ttl: 60 * 60 // 1 hour
+    }
+  },
+  logging: {
+    enabled: true,
+    options: {
+      level: 'info'
+    }
+  },
+  validation: {
+    enabled: true,
+    options: {
+      abortEarly: false
+    }
+  }
+} as const;

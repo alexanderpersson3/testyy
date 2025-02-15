@@ -1,6 +1,9 @@
 import jwt from 'jsonwebtoken';
 import { config } from '../config/index.js';
 import { jest, expect, beforeAll, afterAll, beforeEach } from '@jest/globals';
+import { MongoMemoryServer } from 'mongodb-memory-server';
+import { ServiceFactory } from '../core/di/service.factory';
+import { createServer } from 'http';
 
 // Import types from Jest
 declare global {
@@ -31,17 +34,50 @@ jest.mock('../core/services/websocket.service', () => ({
   }
 }), { virtual: true });
 
-// Global test setup
-beforeAll(async () => {
-  // Any global setup needed before running tests
-});
+let mongoServer: MongoMemoryServer;
+const testServer = createServer();
 
-beforeEach(() => {
-  jest.clearAllMocks();
+beforeAll(async () => {
+  // Start in-memory MongoDB server
+  mongoServer = await MongoMemoryServer.create();
+  const mongoUri = mongoServer.getUri();
+
+  // Initialize services with test configuration
+  await ServiceFactory.initialize({
+    server: testServer,
+    logger: {
+      level: 'error',
+      format: 'json',
+      directory: 'logs/test'
+    },
+    database: {
+      uri: mongoUri,
+      name: 'test'
+    },
+    cache: {
+      enabled: false,
+      ttl: 0,
+      checkPeriod: 0
+    }
+  });
 });
 
 afterAll(async () => {
-  // Clean up after all tests
+  // Clean up resources
+  const db = ServiceFactory.getDatabase();
+  await db.disconnect();
+  await mongoServer.stop();
+  testServer.close();
+});
+
+beforeEach(async () => {
+  // Clear all collections before each test
+  const db = ServiceFactory.getDatabase();
+  const collections = await db.getCollections();
+  
+  for (const collection of collections) {
+    await collection.deleteMany({});
+  }
 });
 
 // Global test utilities
@@ -67,4 +103,19 @@ expect.extend({
       };
     }
   },
-}); 
+});
+
+// Global test utilities
+export const testUtils = {
+  createTestUser: async () => {
+    // Implementation for creating test users
+  },
+  
+  createTestRecipe: async () => {
+    // Implementation for creating test recipes
+  },
+  
+  generateAuthToken: async () => {
+    // Implementation for generating test auth tokens
+  }
+}; 

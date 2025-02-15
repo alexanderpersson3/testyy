@@ -1,7 +1,48 @@
-import type { Request as ExpressRequest, Response as ExpressResponse, NextFunction as ExpressNextFunction } from 'express';
+import type { Request as BaseRequest, Response as BaseResponse, NextFunction } from 'express';
 import type { ParamsDictionary } from 'express-serve-static-core';
 import type { ParsedQs } from 'qs';
 import type { ObjectId } from 'mongodb';
+
+export interface AuthenticatedUser {
+  _id: ObjectId;
+  role: string;
+}
+
+export interface AppRequest<
+  P = ParamsDictionary,
+  ResBody = any,
+  ReqBody = any,
+  ReqQuery = ParsedQs
+> extends Omit<BaseRequest<P, ResBody, ReqBody, ReqQuery>, 'user'> {
+  user?: AuthenticatedUser;
+}
+
+export interface AppResponse<ResBody = any> extends BaseResponse<ResBody> {}
+
+export type AppRequestHandler<
+  P = ParamsDictionary,
+  ResBody = any,
+  ReqBody = any,
+  ReqQuery = ParsedQs
+> = (
+  req: AppRequest<P, ResBody, ReqBody, ReqQuery>,
+  res: AppResponse<ResBody>,
+  next: NextFunction
+) => void | Promise<void>;
+
+export interface ValidateRequest {
+  (schema: {
+    body?: any;
+    query?: any;
+    params?: any;
+  }): AppRequestHandler;
+}
+
+// Export type aliases for convenience
+export type { NextFunction };
+export type Request<P = ParamsDictionary, ResBody = any, ReqBody = any, ReqQuery = ParsedQs> = AppRequest<P, ResBody, ReqBody, ReqQuery>;
+export type Response<ResBody = any> = AppResponse<ResBody>;
+export type RequestHandler<P = ParamsDictionary, ResBody = any, ReqBody = any, ReqQuery = ParsedQs> = AppRequestHandler<P, ResBody, ReqBody, ReqQuery>;
 
 // Re-export express types with better type safety
 export type Request<
@@ -9,12 +50,12 @@ export type Request<
   ResBody = any,
   ReqBody = any,
   ReqQuery = ParsedQs,
-> = Omit<ExpressRequest<P, ResBody, ReqBody, ReqQuery>, 'body'> & {
+> = Omit<Request<P, ResBody, ReqBody, ReqQuery>, 'body'> & {
   body: ReqBody;
 };
 
-export type Response<ResBody = any> = ExpressResponse<ResBody>;
-export type NextFunction = ExpressNextFunction;
+export type Response<ResBody = any> = Response<ResBody>;
+export type NextFunction = NextFunction;
 
 // Base authenticated request type
 export interface AuthenticatedRequest<

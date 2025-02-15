@@ -7,12 +7,21 @@ export interface ValidationErrorDetail {
  * Error thrown when request validation fails
  */
 export class ValidationError extends Error {
-  public readonly statusCode = 400;
-  public readonly errors: ValidationErrorDetail[];
-
-  constructor(message: string, errors: ValidationErrorDetail[]) {
+  constructor(
+    message: string,
+    public field?: string,
+    public code: string = 'VALIDATION_ERROR'
+  ) {
     super(message);
     this.name = 'ValidationError';
-    this.errors = errors;
+  }
+
+  toJSON() {
+    return {
+      name: this.name,
+      message: this.message,
+      field: this.field,
+      code: this.code,
+    };
   }
 } 

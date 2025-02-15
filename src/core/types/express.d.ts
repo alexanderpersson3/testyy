@@ -1,23 +1,48 @@
-import type { Request as ExpressRequest, Response as ExpressResponse, NextFunction as ExpressNextFunction } from '../types/express.js';
-import type { ParamsDictionary } from '../types/express.js';
-import type { ParsedQs } from '../types/express.js';
-import { User } from '../user.js';;
+import type { Request as ExpressRequest, Response as ExpressResponse, NextFunction as ExpressNextFunction } from 'express';
+import type { ParamsDictionary } from 'express-serve-static-core';
+import type { ParsedQs } from 'qs';
 
 declare global {
   namespace Express {
     // Extend Express Request
     interface Request {
-      user?: User;
+      user?: any;
       session?: any;
       files?: any;
       body: any;
       query: ParsedQs;
+      alerts?: {
+        service: import('../monitoring/alerts.service').AlertsService;
+        getActive: () => Array<{
+          id: string;
+          ruleId: string;
+          message: string;
+          severity: 'info' | 'warning' | 'error' | 'critical';
+          metric: string;
+          value: number;
+          threshold: number;
+          timestamp: number;
+          tags?: Record<string, string>;
+        }>;
+        getRules: () => Array<{
+          id: string;
+          name: string;
+          description: string;
+          metric: string;
+          condition: 'gt' | 'lt' | 'eq';
+          threshold: number;
+          duration: number;
+          cooldown: number;
+          tags?: Record<string, string>;
+          enabled: boolean;
+        }>;
+      };
     }
 
     // Extend Express Response
     interface Response {
       locals: {
-        user?: User;
+        user?: any;
         [key: string]: any;
       };
     }
@@ -56,13 +81,13 @@ export interface TypedRequest<
 export interface TypedResponse<ResBody = any> extends ExpressResponse {
   json(data: ResBody): this;
   locals: {
-    user?: User;
+    user?: any;
     [key: string]: any;
   };
 }
 
 export interface AuthenticatedRequest extends BaseRequest {
-  user: User;
+  user: any;
 }
 
 export interface AuthenticatedTypedRequest<
@@ -70,7 +95,7 @@ export interface AuthenticatedTypedRequest<
   B = any,
   Q extends ParsedQs = ParsedQs
 > extends TypedRequest<P, B, Q> {
-  user: User;
+  user: any;
 }
 
 export type RequestHandler<
