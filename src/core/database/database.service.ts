@@ -2,12 +2,15 @@ import { MongoClient, Db, Collection, MongoClientOptions, IndexDescription, Docu
 import { config } from '../../config';
 import logger from '../utils/logger';
 
-class DatabaseService {
+export class DatabaseService {
   private static instance: DatabaseService;
-  private client: MongoClient | null = null;
+  private client: MongoClient;
   private db: Db | null = null;
 
-  private constructor() {}
+  private constructor() {
+    const uri = process.env.MONGODB_URI || 'mongodb://localhost:27017/rezepta';
+    this.client = new MongoClient(uri);
+  }
 
   public static getInstance(): DatabaseService {
     if (!DatabaseService.instance) {
@@ -16,42 +19,36 @@ class DatabaseService {
     return DatabaseService.instance;
   }
 
-  public async connect(): Promise<void> {
+  async connect(): Promise<void> {
     try {
-      this.client = new MongoClient(config.database.URL, {
-        maxPoolSize: config.database.MAX_POOL_SIZE,
-        minPoolSize: config.database.MIN_POOL_SIZE,
-        maxIdleTimeMS: config.database.MAX_IDLE_TIME_MS,
-        waitQueueTimeoutMS: config.database.WAIT_QUEUE_TIMEOUT_MS,
-      });
-
       await this.client.connect();
-      this.db = this.client.db(config.database.NAME);
-      
-      logger.info('Successfully connected to MongoDB.');
+      this.db = this.client.db();
+      logger.info('Connected to MongoDB');
     } catch (error) {
-      logger.error('Error connecting to MongoDB:', error);
+      logger.error('MongoDB connection error:', error);
       throw error;
     }
   }
 
-  public getDb(): Db {
+  async disconnect(): Promise<void> {
+    try {
+      await this.client.close();
+      this.db = null;
+      logger.info('Disconnected from MongoDB');
+    } catch (error) {
+      logger.error('MongoDB disconnection error:', error);
+      throw error;
+    }
+  }
+
+  getDb(): Db {
     if (!this.db) {
-      throw new Error('Database not initialized. Call connect first.');
+      throw new Error('Database not initialized. Call connect() first.');
     }
     return this.db;
   }
 
-  public async close(): Promise<void> {
-    if (this.client) {
-      await this.client.close();
-      this.client = null;
-      this.db = null;
-      logger.info('Database connection closed.');
-    }
-  }
-
-  public getCollection<T>(name: string) {
+  getCollection<T extends Document>(name: string): Collection<T> {
     return this.getDb().collection<T>(name);
   }
 
@@ -143,5 +140,5 @@ export const databaseService = DatabaseService.getInstance();
 
 // Export convenience methods for tests
 export const connectToDatabase = () => databaseService.connect();
-export const closeDatabase = () => databaseService.close();
+export const closeDatabase = () => databaseService.disconnect();
 export const getDb = () => databaseService.getDb();

@@ -10,10 +10,60 @@ export { getDb, ensureConnection, isConnected, disconnect } from './connection.j
 
 import type { Collection } from 'mongodb';
 import type { Document, ObjectId } from '../types/express.js';
-import type { Db } from 'mongodb';
+import { MongoClient, Db } from 'mongodb';
 
 // Initialize singleton database instance
 const db = DatabaseService.getInstance();
+
+interface DatabaseConnection {
+  client: MongoClient;
+  db: Db;
+}
+
+let cachedClient: MongoClient | null = null;
+let cachedDb: Db | null = null;
+
+export async function connectToDatabase(): Promise<DatabaseConnection> {
+  if (cachedClient && cachedDb) {
+    return { client: cachedClient, db: cachedDb };
+  }
+
+  if (!process.env.MONGODB_URI) {
+    throw new Error('MONGODB_URI environment variable is not set');
+  }
+
+  if (!process.env.DB_NAME) {
+    throw new Error('DB_NAME environment variable is not set');
+  }
+
+  const client = new MongoClient(process.env.MONGODB_URI, {
+    serverSelectionTimeoutMS: 5000,
+  });
+
+  try {
+    await client.connect();
+    const db = client.db(process.env.DB_NAME);
+
+    // Verify connection
+    await db.command({ ping: 1 });
+
+    cachedClient = client;
+    cachedDb = db;
+
+    return { client, db };
+  } catch (error) {
+    console.error('Database connection error:', error instanceof Error ? error.message : String(error));
+    throw new Error('Failed to connect to database');
+  }
+}
+
+export async function disconnect(): Promise<void> {
+  if (cachedClient) {
+    await cachedClient.close();
+    cachedClient = null;
+    cachedDb = null;
+  }
+}
 
 /**
  * Ensure database connection is established

@@ -1,10 +1,29 @@
-import { ObjectId } from 'mongodb';
-import { getDb } from '../../../db';
+import { Collection, Document, ObjectId, UpdateFilter } from 'mongodb';
+import { databaseService } from '../../../core/database/database.service';
 import { UserProfile, UserPreferences } from '../dto/user.dto';
+
+interface User extends Document {
+  _id: ObjectId;
+  email: string;
+  password: string;
+  name: string;
+  preferences: {
+    dietaryRestrictions: string[];
+    allergies: string[];
+    cuisinePreferences: string[];
+  };
+  following: ObjectId[];
+  createdAt: Date;
+  updatedAt: Date;
+}
 
 export class UserRepository {
   private static instance: UserRepository;
-  private db = getDb();
+  private collection: Collection<User>;
+
+  private constructor() {
+    this.collection = databaseService.getCollection<User>('users');
+  }
 
   public static getInstance(): UserRepository {
     if (!UserRepository.instance) {
@@ -16,8 +35,7 @@ export class UserRepository {
   async getUserProfile(userId: string) {
     const userObjectId = new ObjectId(userId);
     
-    return this.db
-      .collection('users')
+    return this.collection
       .aggregate([
         { $match: { _id: userObjectId } },
         {
@@ -72,43 +90,71 @@ export class UserRepository {
       .next();
   }
 
-  async updateProfile(userId: string, profile: Partial<UserProfile>) {
-    const userObjectId = new ObjectId(userId);
-    
-    return this.db.collection('users').findOneAndUpdate(
-      { _id: userObjectId },
-      {
-        $set: {
-          ...profile,
-          updatedAt: new Date(),
-        },
-      },
-      { returnDocument: 'after' }
-    );
+  async findById(id: ObjectId): Promise<User | null> {
+    return this.collection.findOne({ _id: id });
   }
 
-  async updatePreferences(userId: string, preferences: Partial<UserPreferences>) {
-    const userObjectId = new ObjectId(userId);
-    
-    return this.db.collection('users').findOneAndUpdate(
-      { _id: userObjectId },
-      {
-        $set: {
-          'preferences': preferences,
-          updatedAt: new Date(),
-        },
+  async findByEmail(email: string): Promise<User | null> {
+    return this.collection.findOne({ email });
+  }
+
+  async create(userData: Pick<User, 'email' | 'password' | 'name'>): Promise<User> {
+    const now = new Date();
+    const newUser: User = {
+      _id: new ObjectId(),
+      ...userData,
+      preferences: {
+        dietaryRestrictions: [],
+        allergies: [],
+        cuisinePreferences: []
       },
-      { returnDocument: 'after' }
+      following: [],
+      createdAt: now,
+      updatedAt: now
+    };
+    await this.collection.insertOne(newUser);
+    return newUser;
+  }
+
+  async updateProfile(
+    id: ObjectId, 
+    update: Partial<Pick<User, 'name' | 'email' | 'password'>>
+  ): Promise<boolean> {
+    const result = await this.collection.updateOne(
+      { _id: id },
+      { 
+        $set: { 
+          ...update,
+          updatedAt: new Date()
+        }
+      }
     );
+    return result.modifiedCount > 0;
+  }
+
+  async updatePreferences(
+    id: ObjectId, 
+    preferences: User['preferences']
+  ): Promise<boolean> {
+    const result = await this.collection.updateOne(
+      { _id: id },
+      { 
+        $set: { 
+          preferences,
+          updatedAt: new Date()
+        }
+      }
+    );
+    return result.modifiedCount > 0;
   }
 
   async checkFollowStatus(followerId: string, followedId: string) {
     const followerObjectId = new ObjectId(followerId);
     const followedObjectId = new ObjectId(followedId);
     
-    return this.db.collection('followers').findOne({
-      followerId: followerObjectId,
-      followedId: followedObjectId,
+    return this.collection.findOne({
+      _id: followerObjectId,
+      following: followedObjectId,
     });
   }
 
@@ -116,20 +162,58 @@ export class UserRepository {
     const followerObjectId = new ObjectId(followerId);
     const followedObjectId = new ObjectId(followedId);
     
-    return this.db.collection('followers').insertOne({
-      followerId: followerObjectId,
-      followedId: followedObjectId,
-      createdAt: new Date(),
-    });
+    return this.collection.updateOne(
+      { _id: followerObjectId },
+      {
+        $addToSet: { following: followedObjectId },
+        $set: { updatedAt: new Date() }
+      }
+    );
   }
 
   async unfollow(followerId: string, followedId: string) {
     const followerObjectId = new ObjectId(followerId);
     const followedObjectId = new ObjectId(followedId);
     
-    return this.db.collection('followers').deleteOne({
-      followerId: followerObjectId,
-      followedId: followedObjectId,
+    return this.collection.updateOne(
+      { _id: followerObjectId },
+      {
+        $pull: { following: followedObjectId },
+        $set: { updatedAt: new Date() }
+      }
+    );
+  }
+
+  async followUser(userId: ObjectId, targetUserId: ObjectId): Promise<boolean> {
+    const result = await this.collection.updateOne(
+      { _id: userId },
+      {
+        $addToSet: { following: targetUserId },
+        $set: { updatedAt: new Date() }
+      } as any // Type assertion needed due to MongoDB types limitation
+    );
+    return result.modifiedCount > 0;
+  }
+
+  async unfollowUser(userId: ObjectId, targetUserId: ObjectId): Promise<boolean> {
+    const result = await this.collection.updateOne(
+      { _id: userId },
+      {
+        $pull: { following: targetUserId },
+        $set: { updatedAt: new Date() }
+      } as any // Type assertion needed due to MongoDB types limitation
+    );
+    return result.modifiedCount > 0;
+  }
+
+  async isFollowing(followerId: string, followedId: string): Promise<boolean> {
+    const followerObjectId = new ObjectId(followerId);
+    const followedObjectId = new ObjectId(followedId);
+    
+    const user = await this.collection.findOne({
+      _id: followerObjectId,
+      following: followedObjectId
     });
+    return !!user;
   }
 } 
