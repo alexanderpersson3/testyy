@@ -1,0 +1,129 @@
+Here's a step-by-step strategic plan to resolve the errors in your codebase:
+
+### Phase 1: Fix Common Pattern Errors
+1. **RateLimit Middleware Messages**
+   - Remove `message` properties from rate limit configurations
+   - Use standard rate limit messages or extend the RateLimitOptions type if custom messages are required
+   - Create a type declaration file if needed:
+     ```typescript
+     declare module 'express-rate-limit' {
+       interface RateLimitOptions {
+         message?: string;
+       }
+     }
+     ```
+
+2. **MongoDB Collection Access**
+   - Replace all instances of `.getCollection()` with `.collection()`
+   ```typescript
+   // Before
+   db.getCollection('user_badges')
+   // After
+   db.collection('user_badges')
+   ```
+
+3. **Route Handler Typing**
+   - Add proper typing for Express response objects
+   ```typescript
+   import { Response } from 'express';
+   // Add to all route handlers
+   async (req: AuthenticatedRequest, res: Response)
+   ```
+
+### Phase 2: Fix Schema Validation Issues
+4. **Zod Schema Definitions**
+   - Update schema definitions to use proper validation structure
+   ```typescript
+   // Before
+   schema: z.object({
+     query: leaderboardSchema,
+   })
+   
+   // After
+   validateRequest({
+     query: leaderboardSchema,
+   })
+   ```
+
+### Phase 3: Address Missing Dependencies
+5. **Import Corrections**
+   - Add missing imports where needed:
+   ```typescript
+   // For auth middleware
+   import { auth } from '../middleware/auth';
+   
+   // For database connection
+   import { connectToDatabase } from '../db';
+   
+   // For role middleware
+   import { requireRoles } from '../middleware/role';
+   ```
+
+6. **Singleton Service Instantiation**
+   - Update service instantiation for classes with private constructors
+   ```typescript
+   // For TranslationService and VariationsService
+   // If they have a getInstance method:
+   const translationService = TranslationService.getInstance();
+   ```
+
+### Phase 4: Type Definition Corrections
+7. **Type Compatibility Issues**
+   - Update type definitions and object shapes:
+   ```typescript
+   // CookingSession type
+   interface CookingSession {
+     activeTimers: Array<{ timerId: string }>;
+     // ... other properties
+   }
+   
+   // User type
+   interface User {
+     id: string;
+     // ... other properties
+   }
+   ```
+
+8. **MongoDB ID Handling**
+   - Add proper type assertions for ObjectID conversion
+   ```typescript
+   new ObjectId(id as string)
+   ```
+
+### Phase 5: Test File Corrections
+9. **Test Mocking Updates**
+   - Update test files with proper typing and mocks
+   ```typescript
+   // Add proper method mocking
+   mockCollections.challenges.findOne = jest.fn().mockResolvedValue(...);
+   
+   // Add missing properties to test data
+   const submission = {
+     ...submissionData,
+     status: 'pending',
+     // other required properties
+   };
+   ```
+
+### Phase 6: Final Validation
+10. **Cross-Check All Fixes**
+    - Run TypeScript compiler to verify remaining errors
+    - Check for any cascading issues from type changes
+    - Verify all middleware imports are consistent across routes
+    - Ensure database connection handling is unified
+
+### Additional Recommendations
+- Create a global type declaration file for extended Express types
+- Implement a consistent validation middleware pattern
+- Set up path aliases to simplify imports
+- Add missing interface properties where needed
+- Consider using a dependency injection pattern for services
+
+### Verification Steps
+1. Run `tsc --noEmit` to check for remaining type errors
+2. Execute test suite to verify functionality
+3. Perform smoke testing on affected routes
+4. Check database interactions in development environment
+5. Verify rate limiting behavior with load testing
+
+This plan addresses the errors systematically while maintaining type safety and code consistency. Start with the most common errors (like MongoDB collection access) and progress to more specific issues, testing at each phase to ensure stability.

@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="300" height="200" viewBox="0 0 300 200" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Background -->
+  <rect width="300" height="200" fill="#F8F9FA"/>
+  
+  <!-- First egg -->
+  <ellipse cx="120" cy="100" rx="40" ry="50" fill="#FFF5E6"/>
+  <ellipse cx="120" cy="100" rx="35" ry="45" fill="#FFFFFF"/>
+  
+  <!-- Second egg -->
+  <ellipse cx="180" cy="120" rx="40" ry="50" fill="#FFF5E6"/>
+  <ellipse cx="180" cy="120" rx="35" ry="45" fill="#FFFFFF"/>
+  
+  <!-- Third egg (partial) -->
+  <ellipse cx="220" cy="90" rx="40" ry="50" fill="#FFF5E6"/>
+  <ellipse cx="220" cy="90" rx="35" ry="45" fill="#FFFFFF"/>
+  
+  <!-- Highlights -->
+  <ellipse cx="110" cy="85" rx="5" ry="7" fill="#FFFFFF"/>
+  <ellipse cx="170" cy="105" rx="5" ry="7" fill="#FFFFFF"/>
+  <ellipse cx="210" cy="75" rx="5" ry="7" fill="#FFFFFF"/>
+</svg> 

@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="300" height="200" viewBox="0 0 300 200" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Background -->
+  <rect width="300" height="200" fill="#F8F9FA"/>
+  
+  <!-- Avocado body -->
+  <path d="M150 40 C100 40 60 80 60 130 C60 180 100 180 150 180 C200 180 240 180 240 130 C240 80 200 40 150 40" fill="#00A651"/>
+  
+  <!-- Avocado pit -->
+  <circle cx="150" cy="130" r="30" fill="#8B4513"/>
+  
+  <!-- Highlight -->
+  <path d="M120 70 C140 60 160 60 180 70" stroke="white" stroke-width="4" fill="none"/>
+</svg> 

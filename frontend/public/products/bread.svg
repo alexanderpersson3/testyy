@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="300" height="200" viewBox="0 0 300 200" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Background -->
+  <rect width="300" height="200" fill="#F8F9FA"/>
+  
+  <!-- Bread loaf -->
+  <path d="M60 100 C60 60 120 40 150 40 C180 40 240 60 240 100 C240 140 200 160 150 160 C100 160 60 140 60 100" fill="#D4A76A"/>
+  
+  <!-- Bread texture -->
+  <path d="M90 80 C120 70 180 70 210 80" stroke="#B38B4D" stroke-width="3" fill="none"/>
+  <path d="M90 100 C120 90 180 90 210 100" stroke="#B38B4D" stroke-width="3" fill="none"/>
+  <path d="M90 120 C120 110 180 110 210 120" stroke="#B38B4D" stroke-width="3" fill="none"/>
+  
+  <!-- Flour dusting -->
+  <circle cx="120" cy="70" r="2" fill="white"/>
+  <circle cx="180" cy="75" r="2" fill="white"/>
+ 

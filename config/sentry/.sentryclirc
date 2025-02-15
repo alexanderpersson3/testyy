@@ -1,0 +1,10 @@
+[auth]
+token=1d2bc38edfa311ef9dda820becee3e19
+
+[defaults]
+url=https://sentry.io/
+org=o4508732757966848
+project=node
+
+[http]
+verify_ssl=true 

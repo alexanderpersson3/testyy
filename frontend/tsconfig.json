@@ -1,0 +1,21 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "../../frontend/dist",
+    "rootDir": "../../frontend/src",
+    "lib": ["DOM", "DOM.Iterable", "ESNext"],
+    "module": "ESNext",
+    "jsx": "react-jsx",
+    "noEmit": true,
+    "paths": {
+      "@components/*": ["../../frontend/src/components/*"],
+      "@pages/*": ["../../frontend/src/pages/*"],
+      "@hooks/*": ["../../frontend/src/hooks/*"],
+      "@utils/*": ["../../frontend/src/utils/*"],
+      "@types/*": ["../../frontend/src/types/*"],
+      "@store/*": ["../../frontend/src/store/*"]
+    }
+  },
+  "include": ["../../frontend/src/**/*"],
+  "exclude": ["node_modules", "dist", "**/*.test.ts", "**/*.test.tsx"]
+} 

@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="600" height="400" viewBox="0 0 600 400" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Background -->
+  <rect width="600" height="400" fill="#F8F9FA"/>
+  
+  <!-- Decorative circles -->
+  <circle cx="300" cy="200" r="150" fill="#00A651" fill-opacity="0.1"/>
+  <circle cx="300" cy="200" r="100" fill="#00A651" fill-opacity="0.2"/>
+  
+  <!-- Shopping basket -->
+  <path d="M200 180 L400 180 L380 300 L220 300 Z" stroke="#00A651" stroke-width="4" fill="none"/>
+  <path d="M250 150 C250 150 300 120 350 150" stroke="#00A651" stroke-width="4" fill="none"/>
+  
+  <!-- Grocery items -->
+  <circle cx="270" cy="220" r="20" fill="#33B873"/>
+  <circle cx="320" cy="240" r="15" fill="#007A3D"/>
+  <circle cx="350" cy="210" r="25" fill="#33B873"/>
+  
+  <!-- Floating items -->
+  <circle cx="150" cy="150" r="10" fill="#00A651" fill-opacity="0.3"/>
+  <circle cx="450" cy="250" r="15" fill="#00A651" fill-opacity="0.3"/>
+  <circle cx="200" cy="350" r="12" fill="#00A651" fill-opacity="0.3"/>
+  <circle cx="400" cy="100" r="8" fill="#00A651" fill-opacity="0.3"/>
+</svg> 

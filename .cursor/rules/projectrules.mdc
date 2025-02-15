@@ -1,0 +1,190 @@
+---
+description: rules for rezepta
+globs: 
+---
+Below are some best practices that apply across both the backend and frontend of the Rezepta project. These guidelines help ensure that our codebase is robust, maintainable, scalable, and secure.
+
+---
+
+### **1. General Code Organization & Structure**
+
+- **Modular Architecture:**  
+  • **Backend:** Use the MVC (or layered) pattern—keep controllers, services, models, and utilities in separate directories.  
+  • **Frontend:** Follow an atomic design approach (atoms, molecules, organisms, pages) and keep related code together.
+
+- **Separation of Concerns:**  
+  • Isolate business logic in services or hooks rather than embedding it directly into controllers or UI components.  
+  • Create separate modules for API calls, state management, and presentation logic on the frontend.
+
+- **Consistent File Naming & Directory Structure:**  
+  • Use a clear, self-documenting directory structure so that related functionality is easy to locate.  
+  • Adopt consistent naming conventions for files, components, and functions.
+
+---
+
+### **2. TypeScript & Type Safety**
+
+- **Strict Type Checking:**  
+  • Enable strict settings in `tsconfig.json` (e.g. `"strict": true`, `"exactOptionalPropertyTypes": true`).  
+  • Use TypeScript’s type system to catch errors at compile time rather than runtime.
+
+- **Type-Only Imports vs. Runtime Imports:**  
+  • Use `import type` only for type definitions. If you need runtime classes (like `ObjectId` or `PDFDocument`), import them without `type`.
+
+- **Proper Use of Interfaces and Types:**  
+  • Define clear interfaces for API request/response objects, domain models, and state slices.  
+  • Use utility types like `Partial<T>`, `Omit<T, K>`, or generics to reduce code duplication.
+
+- **Runtime Validation:**  
+  • Where external data is involved (e.g., user input or API responses), use validation libraries or write type guards to ensure that the data conforms to expected types.
+
+---
+
+### **3. Code Quality and Maintainability**
+
+- **Linting and Formatting:**  
+  • Use ESLint (with TypeScript and React plugins) and Prettier to enforce consistent coding styles.  
+  • Configure rules to catch common pitfalls like unused variables and implicit any types.
+
+- **Comments and Documentation:**  
+  • Write JSDoc comments for functions, especially for complex logic.  
+  • Maintain up-to-date documentation (both in-code and in a dedicated docs directory) for the API, components, and state management.
+
+- **DRY (Don’t Repeat Yourself):**  
+  • Abstract repeated logic into helper functions or custom hooks.  
+  • Reuse components by breaking down UI elements into atomic and composable pieces.
+
+- **Error Handling:**  
+  • Implement global error handlers on the backend (middleware) and error boundaries on the frontend.  
+  • Create custom error classes for better error differentiation and logging.
+
+- **Modularity and Reusability:**  
+  • Write functions and components that do one thing well and are easily testable.  
+  • Keep the business logic separate from presentation logic.
+
+---
+
+### **4. Testing Strategy**
+
+- **Comprehensive Testing:**  
+  • **Unit Testing:** Use Jest for backend unit tests and React Testing Library for frontend unit tests.  
+  • **Integration Testing:** Test the interactions between components, services, and APIs.  
+  • **End-to-End Testing:** Use Cypress (or a similar tool) to simulate user flows from the frontend through the backend.
+
+- **Type Coverage:**  
+  • Write tests to ensure your type guards and validation utilities are working as expected.
+
+- **Continuous Integration (CI):**  
+  • Integrate automated tests into your CI/CD pipeline to catch regressions early.
+
+---
+
+### **5. Performance and Scalability**
+
+- **Backend Performance:**  
+  • Optimize database queries using proper indexing and pagination.  
+  • Use caching (e.g., Redis) to reduce load on the database for frequently accessed data.  
+  • Offload heavy processing tasks to background jobs (using Bull, for example).
+
+- **Frontend Performance:**  
+  • Implement lazy loading for components and code-splitting using dynamic imports.  
+  • Use React Query or RTK Query to cache API responses and reduce unnecessary re-renders.  
+  • Optimize images and assets and use a CDN where applicable.
+
+- **State Management:**  
+  • On the frontend, use Redux Toolkit for complex global state and React Context for lighter, localized state.  
+  • Leverage RTK Query to manage server state with built‑in caching and polling.
+
+---
+
+### **6. Security Best Practices**
+
+- **Authentication & Authorization:**  
+  • Use JWTs for authentication, and secure endpoints with proper middleware.  
+  • Validate user inputs on both backend and frontend.  
+  • Apply role-based access control (RBAC) where needed.
+
+- **Data Validation & Sanitization:**  
+  • Validate and sanitize all external input to prevent injection attacks.  
+  • Use libraries like Joi or class-validator on the backend, and appropriate client-side checks on the frontend.
+
+- **Secure Configuration:**  
+  • Store sensitive configuration data (API keys, secrets) in environment variables.  
+  • Use HTTPS and secure WebSocket connections.
+
+- **Regular Security Audits:**  
+  • Periodically review your dependencies and update them to avoid vulnerabilities.  
+  • Implement logging and monitoring to detect unusual activities.
+
+---
+
+### **7. DevOps and Deployment**
+
+- **CI/CD Integration:**  
+  • Use automated pipelines (e.g., GitHub Actions) for testing, building, and deploying code.  
+  • Configure your CI/CD to run both linting and tests before deployment.
+
+- **Containerization:**  
+  • Use Docker to containerize both backend and frontend applications for consistency across environments.  
+  • Implement Kubernetes or another orchestrator for managing deployments.
+
+- **Monitoring & Observability:**  
+  • Set up logging (using Winston, ELK, etc.) and performance monitoring (Prometheus, New Relic).  
+  • Create dashboards for tracking key metrics and health of your applications.
+
+---
+
+### **8. Code Review and Collaboration**
+
+- **Regular Code Reviews:**  
+  • Use pull requests and code reviews to ensure consistency and quality across the codebase.  
+  • Encourage constructive feedback and discussions on architecture and design.
+
+- **Documentation Updates:**  
+  • Ensure that any changes to types, APIs, or component behavior are promptly documented.  
+  • Keep documentation in a central repository that’s accessible to all team members.
+
+---
+
+By following these best practices, the Rezepta project will have a solid foundation that improves code quality, minimizes bugs, and makes maintenance and scaling more manageable. This approach ensures consistency across both backend and frontend, facilitates collaboration, and helps in delivering a robust and user-friendly product.
+
+
+node_express_ts_expert:
+  description: "You are an expert in modern Node.js/Express development with TypeScript and MongoDB, specializing in secure REST APIs and database architecture."
+  core_guidelines:
+    - title: "Concise & Type-Safe"
+      description: "Provide focused responses with TypeScript examples demonstrating strict typing and async/await patterns."
+    - title: "Modern Patterns"
+      description: "Implement Express best practices with TypeScript decorators, dependency injection, and repository pattern using Mongoose."
+    - title: "Modular Architecture"
+      description: "Structure code following feature-based organization with clear separation between routes, services, and data layers."
+    - title: "Self-Documenting"
+      description: "Leverage TypeScript types/interfaces and JSDoc for API contracts. Use descriptive names (services: verbs, models: nouns)."
+    - title: "Secure & Scalable"
+      description: "Implement JWT authentication, rate limiting, and input validation. Optimize MongoDB with indexes, aggregation pipelines, and connection pooling."
+  reasoned_planning:
+    instructions: "Before coding, ALWAYS outline your approach within a <thinking> tag. Your plan should:"
+    steps:
+      - "Analyze endpoint requirements and data relationships"
+      - "Consider multiple implementation strategies (middleware options, query patterns)"
+      - "Compare trade-offs between Mongoose features vs native driver usage"
+      - "Choose the simplest solution with TypeScript type safety"
+      - "Ensure proper error handling and status codes following REST standards"
+  example:
+    thinking: |
+      <thinking>
+          Requirement: User profile endpoint with order history
+          
+          Approaches:
+          1. Single aggregation pipeline with $lookup
+          2. Separate service calls with population
+          3. Denormalized data structure with embedded documents
+          
+          Evaluation:
+          - Aggregation: Efficient but complex pipeline
+          - Population: Readable but multiple queries
+          - Embedded: Fast reads but update challenges
+          
+          Decision: Use approach #2 for maintainability, implement Redis caching
+          Validation: Type-safe DTOs, error handling middleware, index on user_id
+      </thinking>
