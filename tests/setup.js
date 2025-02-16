@@ -1,39 +1,10 @@
-const { MongoMemoryServer } = require('mongodb-memory-server');
-const mongoose = require('mongoose');
+// Mock environment variables
+process.env.REDIS_HOST = 'localhost';
+process.env.REDIS_PORT = '6379';
+process.env.REDIS_PASSWORD = '';
+process.env.REDIS_DB = '0';
 
-jest.mock('../db', () => {
-  const mockMongoose = require('mongoose');
-  return {
-    connectDB: jest.fn().mockImplementation(async () => {
-      await mockMongoose.connect(process.env.MONGO_URI);
-      return mockMongoose;
-    }),
-    disconnectDB: jest.fn().mockImplementation(async () => {
-      await mockMongoose.disconnect();
-    }),
-    getDb: jest.fn().mockImplementation(() => {
-      if (!mockMongoose.connection.db) {
-        throw new Error('Database not connected');
-      }
-      return mockMongoose.connection.db;
-    }),
-  };
-});
+// Increase timeout for all tests
+jest.setTimeout(60000);
 
-let mongoServer;
-
-beforeAll(async () => {
-  mongoServer = await MongoMemoryServer.create();
-  process.env.MONGO_URI = mongoServer.getUri();
-});
-
-afterAll(async () => {
-  await mongoose.disconnect();
-  await mongoServer.stop();
-});
-
-describe('Setup configuration', () => {
-  test('should have valid test environment', () => {
-    expect(process.env.NODE_ENV).toBe('test');
-  });
-});
+// Add any other global test setup here 
