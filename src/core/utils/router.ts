@@ -1,5 +1,8 @@
-import { Router } from 'express';;
-import type { RequestHandler, ValidationChain, ParamsDictionary } from '../types/express.js';
+import { Router } from '../types/express.d.ts'
+import { RequestHandler, ValidationChain, ParamsDictionary } from '@/core/types/express'
+
+import { Router } from '../types/express.d.ts';;
+import { AuthRouter } from '@/types/express';
 
 export class TypedRouter {
   private router: Router;
@@ -89,4 +92,13 @@ export class TypedRouter {
   }
 }
 
-export default TypedRouter; 
+export default TypedRouter;
+
+/**
+ * Creates a new router instance with proper type support for authenticated handlers
+ * @returns A router instance that supports both regular and authenticated handlers
+ */
+export const createAuthRouter = (): AuthRouter => {
+  const router = Router();
+  return router as unknown as AuthRouter;
+}; 

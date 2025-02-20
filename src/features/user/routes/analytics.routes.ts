@@ -1,190 +1,137 @@
-import { Router } from 'express';;
-import type { Response } from '../types/express.js';
-import type { Router } from '../types/express.js';;
-import { z } from 'zod';;
-import type { validateRequest } from '../types/express.js';
-import { AnalyticsService } from '../services/analytics.service.js';;
-import { MonitoringService } from '../services/monitoring.service.js';;
-import type { AuthenticatedRequest } from '../types/express.js';
-import { ObjectId } from 'mongodb';;;;
-import { auth } from '../middleware/auth.js';;
-import { DatabaseError, ValidationError } from '../utils/errors.js';;
-import logger from '../utils/logger.js';
-import { asyncHandler } from '../utils/asyncHandler.js';;
-import { rateLimitMiddleware } from '../middleware/rate-limit.js';;
+import { Types } from 'mongoose';
+import { auth } from '@/core/middleware/auth.middleware';
+import { rateLimiter } from '@/core/middleware/rate-limiter.middleware';
+import { UserAnalyticsService } from '@/features/shared/services/analytics/user-analytics.service';
+import { authenticatedHandler } from '@/core/utils/async-handler';
+import { validate } from '@/core/middleware/validate';
+import { container } from '@/core/di/container';
+import { TYPES } from '@/core/types/constants';
+import { ParamsDictionary } from 'express-serve-static-core';
+import { analyticsSchemas } from '@/core/validation/analytics.schema';
+import {
+  AnalyticsPreferences,
+  CookingStats,
+  UsageMetrics,
+  AnalyticsEvent,
+  FilterMetrics,
+  CreateAnalyticsEventDTO,
+  UpdateAnalyticsPreferencesDTO,
+  CookingStatsInput
+} from '@/core/types/domain/analytics.types';
+import { ParsedQs } from 'qs';
+import { RateLimitType } from '@/core/services/rate-limiter.service';
+import { TypedAuthRequest, TypedResponse, RequestWithAuth } from '@/types/express';
+import { createAuthRouter } from '@/core/utils/router';
 
-const router = Router();
-const analyticsService = AnalyticsService.getInstance();
-const monitoringService = new MonitoringService();
+interface DateRangeQuery extends ParsedQs {
+  startDate: string;
+  endDate: string;
+}
 
-// Validation schemas
-const dateRangeSchema = z.object({
-  startDate: z.string().datetime(),
-  endDate: z.string().datetime(),
-});
+const router = createAuthRouter();
+const analyticsService = container.get<UserAnalyticsService>(TYPES.AnalyticsService);
 
-// Get activity timeline
-router.get(
-  '/activity',
-  auth,
-  rateLimitMiddleware.api(),
-  validateRequest(dateRangeSchema.partial()),
-  asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
-    if (!req.user) {
-      throw new ValidationError('Authentication required');
-    }
-
-    try {
-      const startDate = req.query.startDate ? new Date(req.query.startDate as string) : undefined;
-      const endDate = req.query.endDate ? new Date(req.query.endDate as string) : undefined;
-      
-      const timeline = await analyticsService.getActivityTimeline(new ObjectId(req.user.id), {
-        startDate,
-        endDate
-      });
-      res.json(timeline);
-    } catch (error) {
-      logger.error('Failed to get activity timeline:', error);
-      throw new DatabaseError('Failed to get activity timeline');
-    }
-  })
-);
-
-// Get usage metrics
+// Usage & Metrics Routes
 router.get(
   '/usage',
   auth,
-  rateLimitMiddleware.api(),
-  validateRequest(z.object({
-    period: z.enum(['day', 'week', 'month'])
-  })),
-  asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
-    if (!req.user) {
-      throw new ValidationError('Authentication required');
-    }
-
-    try {
-      const metrics = await analyticsService.getUsageMetrics(new ObjectId(req.user.id), {
-        period: req.query.period as 'day' | 'week' | 'month'
+  rateLimiter(RateLimitType.USER_ACTIONS),
+  validate(analyticsSchemas.dateRange, 'query'),
+  authenticatedHandler<ParamsDictionary, UsageMetrics[], never, DateRangeQuery>(
+    async (req, res) => {
+      const userId = new Types.ObjectId(req.user.id);
+      const { startDate, endDate } = req.query;
+      
+      const metrics = await analyticsService.getUsageMetrics(userId, {
+        start: new Date(String(startDate)),
+        end: new Date(String(endDate))
       });
-      res.json(metrics);
-    } catch (error) {
-      logger.error('Failed to get usage metrics:', error);
-      throw new DatabaseError('Failed to get usage metrics');
+      res.json({ success: true, data: metrics });
     }
-  })
+  )
 );
 
-// Get cooking stats
+// Cooking Stats Route
 router.get(
   '/cooking-stats',
   auth,
-  rateLimitMiddleware.api(),
-  asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
-    if (!req.user) {
-      throw new ValidationError('Authentication required');
+  rateLimiter(RateLimitType.USER_ACTIONS),
+  authenticatedHandler<ParamsDictionary, CookingStats>(
+    async (req, res) => {
+      const userId = new Types.ObjectId(req.user.id);
+      const stats = await analyticsService.updateCookingStats(userId, {} as CookingStatsInput);
+      res.json({ success: true, data: stats });
     }
-
-    try {
-      const stats = await analyticsService.getCookingStats(new ObjectId(req.user.id));
-      res.json(stats);
-    } catch (error) {
-      logger.error('Failed to get cooking stats:', error);
-      throw new DatabaseError('Failed to get cooking stats');
-    }
-  })
+  )
 );
 
-// Get endpoint metrics
+// Filter Metrics Route
 router.get(
-  '/endpoint-metrics',
+  '/filters',
   auth,
-  rateLimitMiddleware.api(),
-  validateRequest(dateRangeSchema),
-  asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
-    if (!req.user) {
-      throw new ValidationError('Authentication required');
+  rateLimiter(RateLimitType.USER_ACTIONS),
+  validate(analyticsSchemas.dateRange, 'query'),
+  authenticatedHandler<ParamsDictionary, FilterMetrics, never, DateRangeQuery>(
+    async (req, res) => {
+      const userId = new Types.ObjectId(req.user.id);
+      const { startDate, endDate } = req.query;
+      
+      const metrics = await analyticsService.getFilterMetrics(
+        new Date(String(startDate)),
+        new Date(String(endDate))
+      );
+      res.json({ success: true, data: metrics });
     }
-
-    try {
-      const startDate = new Date(req.query.startDate as string);
-      const endDate = new Date(req.query.endDate as string);
-      const metrics = await monitoringService.getEndpointMetrics(startDate, endDate);
-      res.json(metrics);
-    } catch (error) {
-      logger.error('Failed to get endpoint metrics:', error);
-      throw new DatabaseError('Failed to get endpoint metrics');
-    }
-  })
+  )
 );
 
-// Get system metrics
+// Analytics Preferences Routes
 router.get(
-  '/system-metrics',
+  '/preferences',
   auth,
-  rateLimitMiddleware.api(),
-  validateRequest(dateRangeSchema),
-  asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
-    if (!req.user) {
-      throw new ValidationError('Authentication required');
+  rateLimiter(RateLimitType.USER_ACTIONS),
+  authenticatedHandler<ParamsDictionary, AnalyticsPreferences>(
+    async (req, res) => {
+      const userId = new Types.ObjectId(req.user.id);
+      const preferences = await analyticsService.updateAnalyticsPreferences(userId, {});
+      res.json({ success: true, data: preferences });
     }
-
-    try {
-      const startDate = new Date(req.query.startDate as string);
-      const endDate = new Date(req.query.endDate as string);
-      const metrics = await monitoringService.getSystemMetrics(startDate, endDate);
-      res.json(metrics);
-    } catch (error) {
-      logger.error('Failed to get system metrics:', error);
-      throw new DatabaseError('Failed to get system metrics');
-    }
-  })
+  )
 );
 
-// Get error distribution
-router.get(
-  '/error-distribution',
+router.put(
+  '/preferences',
   auth,
-  rateLimitMiddleware.api(),
-  validateRequest(dateRangeSchema),
-  asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
-    if (!req.user) {
-      throw new ValidationError('Authentication required');
+  rateLimiter(RateLimitType.USER_ACTIONS),
+  validate(analyticsSchemas.analyticsPreferences, 'body'),
+  authenticatedHandler<ParamsDictionary, AnalyticsPreferences, UpdateAnalyticsPreferencesDTO>(
+    async (req, res) => {
+      const userId = new Types.ObjectId(req.user.id);
+      const preferences = await analyticsService.updateAnalyticsPreferences(
+        userId,
+        req.body
+      );
+      res.json({ success: true, data: preferences });
     }
-
-    try {
-      const startDate = new Date(req.query.startDate as string);
-      const endDate = new Date(req.query.endDate as string);
-      const distribution = await monitoringService.getErrorDistribution(startDate, endDate);
-      res.json(distribution);
-    } catch (error) {
-      logger.error('Failed to get error distribution:', error);
-      throw new DatabaseError('Failed to get error distribution');
-    }
-  })
+  )
 );
 
-// Get slow endpoints
-router.get(
-  '/slow-endpoints',
+// Log Analytics Event Route
+router.post(
+  '/events',
   auth,
-  rateLimitMiddleware.api(),
-  validateRequest(dateRangeSchema),
-  asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
-    if (!req.user) {
-      throw new ValidationError('Authentication required');
+  rateLimiter(RateLimitType.USER_ACTIONS),
+  validate(analyticsSchemas.analyticsEvent, 'body'),
+  authenticatedHandler<ParamsDictionary, AnalyticsEvent, CreateAnalyticsEventDTO>(
+    async (req, res) => {
+      const userId = new Types.ObjectId(req.user.id);
+      const event = await analyticsService.logAnalyticsEvent(
+        userId,
+        req.body
+      );
+      res.json({ success: true, data: event });
     }
-
-    try {
-      const startDate = new Date(req.query.startDate as string);
-      const endDate = new Date(req.query.endDate as string);
-      const slowEndpoints = await monitoringService.getSlowEndpoints(startDate, endDate);
-      res.json(slowEndpoints);
-    } catch (error) {
-      logger.error('Failed to get slow endpoints:', error);
-      throw new DatabaseError('Failed to get slow endpoints');
-    }
-  })
+  )
 );
 
 export default router;

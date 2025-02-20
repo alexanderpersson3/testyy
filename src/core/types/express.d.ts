@@ -1,123 +1,196 @@
 import type { Request as ExpressRequest, Response as ExpressResponse, NextFunction as ExpressNextFunction } from 'express';
 import type { ParamsDictionary } from 'express-serve-static-core';
 import type { ParsedQs } from 'qs';
+import type { Types } from 'mongoose';
+import type { ZodSchema } from 'zod';
+import type { ErrorContext } from './base.types';
+import type { ApiResponse, PaginatedResponse } from './base.types';
+import type { AuthUser as BaseAuthUser, JwtUser } from './auth.types';
 
+// Re-export auth types
+export type { BaseAuthUser, JwtUser };
+
+// User type for authenticated requests
+export interface AuthUser {
+  id: Types.ObjectId;
+  email: string;
+  role: string;
+  permissions: string[];
+  isVerified: boolean;
+  requires2FA?: boolean;
+}
+
+// Base request interface with type safety
+export interface Request<
+  P = ParamsDictionary,
+  ResBody = unknown,
+  ReqBody = unknown,
+  ReqQuery = ParsedQs,
+  Locals extends Record<string, unknown> = Record<string, unknown>
+> extends ExpressRequest<P, ResBody, ReqBody, ReqQuery, Locals> {
+  user?: AuthUser;
+  path: string;
+  method: string;
+  headers: Record<string, string | string[] | undefined>;
+  query: ReqQuery;
+  body: ReqBody;
+  params: P;
+  ip: string;
+  protocol: string;
+  secure: boolean;
+  originalUrl: string;
+  baseUrl: string;
+  // Performance monitoring
+  performance?: {
+    startTime: number;
+    endTime?: number;
+    duration?: number;
+  };
+  // Rate limiting
+  rateLimit?: {
+    limit: number;
+    current: number;
+    remaining: number;
+    resetTime: Date;
+  };
+}
+
+// Authenticated request with guaranteed user
+export interface AuthenticatedRequest<
+  P = ParamsDictionary,
+  ResBody = unknown,
+  ReqBody = unknown,
+  ReqQuery = ParsedQs,
+  Locals extends Record<string, unknown> = Record<string, unknown>
+> extends Request<P, ResBody, ReqBody, ReqQuery, Locals> {
+  user: AuthUser;
+}
+
+// Response with type safety
+export interface Response<
+  ResBody = unknown,
+  Locals extends Record<string, unknown> = Record<string, unknown>
+> extends ExpressResponse<ResBody, Locals> {
+  // Type-safe send methods
+  json<T extends ResBody>(body: T): this;
+  send<T extends ResBody>(body: T): this;
+  
+  // API response helpers
+  success<T>(data: T): Response<ApiResponse<T>>;
+  error(error: ErrorContext): Response<ApiResponse<never>>;
+  paginated<T>(response: PaginatedResponse<T>): Response<ApiResponse<PaginatedResponse<T>>>;
+}
+
+// Type-safe next function
+export type NextFunction = ExpressNextFunction;
+
+// Base middleware type
+export type Middleware<
+  P = ParamsDictionary,
+  ResBody = unknown,
+  ReqBody = unknown,
+  ReqQuery = ParsedQs,
+  Locals extends Record<string, unknown> = Record<string, unknown>
+> = (
+  req: Request<P, ResBody, ReqBody, ReqQuery, Locals>,
+  res: Response<ResBody, Locals>,
+  next: NextFunction
+) => void | Promise<void>;
+
+// Authenticated middleware type
+export type AuthenticatedMiddleware<
+  P = ParamsDictionary,
+  ResBody = unknown,
+  ReqBody = unknown,
+  ReqQuery = ParsedQs,
+  Locals extends Record<string, unknown> = Record<string, unknown>
+> = (
+  req: AuthenticatedRequest<P, ResBody, ReqBody, ReqQuery, Locals>,
+  res: Response<ResBody, Locals>,
+  next: NextFunction
+) => void | Promise<void>;
+
+// Error middleware type
+export type ErrorMiddleware = (
+  error: Error,
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => void | Promise<void>;
+
+// Validation middleware type
+export type ValidationMiddleware<T> = (
+  schema: ZodSchema<T>
+) => Middleware<ParamsDictionary, unknown, T>;
+
+// Route handler types
+export type RouteHandler<
+  P = ParamsDictionary,
+  ResBody = unknown,
+  ReqBody = unknown,
+  ReqQuery = ParsedQs,
+  Locals extends Record<string, unknown> = Record<string, unknown>
+> = (
+  req: Request<P, ResBody, ReqBody, ReqQuery, Locals>,
+  res: Response<ResBody, Locals>,
+  next: NextFunction
+) => Promise<void> | void;
+
+// Authenticated route handler
+export type AuthenticatedRouteHandler<
+  P = ParamsDictionary,
+  ResBody = unknown,
+  ReqBody = unknown,
+  ReqQuery = ParsedQs,
+  Locals extends Record<string, unknown> = Record<string, unknown>
+> = (
+  req: AuthenticatedRequest<P, ResBody, ReqBody, ReqQuery, Locals>,
+  res: Response<ResBody, Locals>,
+  next: NextFunction
+) => Promise<void> | void;
+
+// Utility types
+export type TypedRequest<T> = Request<ParamsDictionary, unknown, T>;
+export type TypedResponse<T> = Response<T>;
+
+// Extend express Request
 declare global {
   namespace Express {
-    // Extend Express Request
     interface Request {
-      user?: any;
-      session?: any;
-      files?: any;
-      body: any;
-      query: ParsedQs;
-      alerts?: {
-        service: import('../monitoring/alerts.service').AlertsService;
-        getActive: () => Array<{
-          id: string;
-          ruleId: string;
-          message: string;
-          severity: 'info' | 'warning' | 'error' | 'critical';
-          metric: string;
-          value: number;
-          threshold: number;
-          timestamp: number;
-          tags?: Record<string, string>;
-        }>;
-        getRules: () => Array<{
-          id: string;
-          name: string;
-          description: string;
-          metric: string;
-          condition: 'gt' | 'lt' | 'eq';
-          threshold: number;
-          duration: number;
-          cooldown: number;
-          tags?: Record<string, string>;
-          enabled: boolean;
-        }>;
+      user?: JwtUser;
+      performance?: {
+        startTime: number;
+        endTime?: number;
+        duration?: number;
+      };
+      rateLimit?: {
+        limit: number;
+        current: number;
+        remaining: number;
+        resetTime: Date;
       };
     }
 
-    // Extend Express Response
-    interface Response {
-      locals: {
-        user?: any;
-        [key: string]: any;
-      };
+    interface Response<ResBody = unknown> {
+      success<T>(data: T): Response<ApiResponse<T>>;
+      error(error: ErrorContext): Response<ApiResponse<never>>;
+      paginated<T>(response: PaginatedResponse<T>): Response<ApiResponse<PaginatedResponse<T>>>;
     }
   }
 }
 
-// Base interfaces for type-safe requests
-export interface BaseRequest extends ExpressRequest {
-  body: any;
-  query: ParsedQs;
-  params: ParamsDictionary;
-}
-
-export interface TypedRequestParams<P extends ParamsDictionary> extends BaseRequest {
-  params: P;
-}
-
-export interface TypedRequestBody<B> extends BaseRequest {
-  body: B;
-}
-
-export interface TypedRequestQuery<Q extends ParsedQs> extends BaseRequest {
-  query: Q;
-}
-
-export interface TypedRequest<
-  P extends ParamsDictionary = ParamsDictionary,
-  B = any,
-  Q extends ParsedQs = ParsedQs
-> extends BaseRequest {
-  params: P;
-  body: B;
-  query: Q;
-}
-
-export interface TypedResponse<ResBody = any> extends ExpressResponse {
-  json(data: ResBody): this;
-  locals: {
-    user?: any;
-    [key: string]: any;
-  };
-}
-
-export interface AuthenticatedRequest extends BaseRequest {
-  user: any;
-}
-
-export interface AuthenticatedTypedRequest<
-  P extends ParamsDictionary = ParamsDictionary,
-  B = any,
-  Q extends ParsedQs = ParsedQs
-> extends TypedRequest<P, B, Q> {
-  user: any;
-}
-
-export type RequestHandler<
-  P extends ParamsDictionary = ParamsDictionary,
-  ResBody = any,
-  ReqBody = any,
-  ReqQuery extends ParsedQs = ParsedQs
-> = (
-  req: TypedRequest<P, ReqBody, ReqQuery>,
-  res: TypedResponse<ResBody>,
-  next: ExpressNextFunction
-) => void | Promise<void>;
-
-export type AuthenticatedRequestHandler<
-  P extends ParamsDictionary = ParamsDictionary,
-  ResBody = any,
-  ReqBody = any,
-  ReqQuery extends ParsedQs = ParsedQs
-> = (
-  req: AuthenticatedTypedRequest<P, ReqBody, ReqQuery>,
-  res: TypedResponse<ResBody>,
-  next: ExpressNextFunction
-) => void | Promise<void>;
-
-export { ExpressRequest as Request, ExpressResponse as Response, ExpressNextFunction as NextFunction };
+// Export everything from a single source
+export {
+  Request as ExpressRequest,
+  Response as ExpressResponse,
+  NextFunction as ExpressNextFunction,
+  AuthUser,
+  Middleware,
+  AuthenticatedMiddleware,
+  ErrorMiddleware,
+  ValidationMiddleware,
+  RouteHandler,
+  AuthenticatedRouteHandler,
+  TypedRequest,
+  TypedResponse
+}; 
